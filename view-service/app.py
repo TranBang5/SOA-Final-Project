@@ -1,73 +1,110 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template
+from flask_sqlalchemy import SQLAlchemy
 import os
-import mysql.connector
 from datetime import datetime
 
 app = Flask(__name__)
 
 # Database configuration
-db_config = {
-    'host': os.getenv('MYSQL_HOST', 'view-db'),
-    'user': os.getenv('MYSQL_USER', 'root'),
-    'password': os.getenv('MYSQL_PASSWORD', 'root'),
-    'database': os.getenv('MYSQL_DATABASE', 'view_service')
-}
+app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'mysql+mysqlconnector://view_user:view_pass@view-db/view_db')
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-def get_db_connection():
-    return mysql.connector.connect(**db_config)
+db = SQLAlchemy(app)
 
-@app.route('/view/<int:paste_id>', methods=['GET'])
-def record_view(paste_id):
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # Record the view
-        cursor.execute(
-            "INSERT INTO views (paste_id, viewed_at) VALUES (%s, %s)",
-            (paste_id, datetime.now())
-        )
-        conn.commit()
-        
-        cursor.close()
-        conn.close()
-        
-        return jsonify({'message': 'View recorded'}), 200
-        
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+# Models
+class Paste(db.Model):
+    paste_id = db.Column(db.Integer, primary_key=True)  # paste_id as primary key
+    short_url = db.Column(db.String(10), nullable=False)
+    content = db.Column(db.Text, nullable=False)
+    expires_at = db.Column(db.DateTime)
+    view_count = db.Column(db.Integer, default=0)
 
-@app.route('/views/<int:paste_id>', methods=['GET'])
+class View(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    paste_id = db.Column(db.Integer, db.ForeignKey('paste.paste_id'), nullable=False)  # ForeignKey to paste_id
+    viewed_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+# Routes
+@app.route('/')
+def index():
+    """
+    Show all available non-expired pastes.
+    """
+    pastes = Paste.query.filter(
+        (Paste.expires_at > datetime.utcnow()) | (Paste.expires_at == None)
+    ).order_by(Paste.paste_id.desc()).all()  # Order by paste_id (primary key)
+    return render_template('index.html', pastes=pastes)
+
+@app.route('/paste/<short_url>')
+def view_by_short_url(short_url):
+    """
+    View a paste by its short URL.
+    """
+    paste = Paste.query.filter_by(short_url=short_url).first()
+
+    if not paste:
+        return render_template('error.html', message='Paste not found'), 404
+
+    if paste.expires_at and paste.expires_at < datetime.utcnow():
+        return render_template('error.html', message='Paste has expired', expired_at=paste.expires_at), 410
+
+    view = View(paste_id=paste.paste_id)
+    db.session.add(view)
+
+    paste.view_count = View.query.filter_by(paste_id=paste.paste_id).count()
+    db.session.commit()
+
+    return render_template('view.html', paste=paste)
+
+@app.route('/api/views/<int:paste_id>', methods=['GET'])
 def get_views(paste_id):
+    view_count = View.query.filter_by(paste_id=paste_id).count()
+    return jsonify({'view_count': view_count})
+
+@app.route('/api/pastes', methods=['GET'])
+def get_pastes():
+    pastes = Paste.query.filter(
+        (Paste.expires_at > datetime.utcnow()) | (Paste.expires_at == None)
+    ).all()
+    return jsonify([{
+        'paste_id': paste.paste_id,
+        'short_url': paste.short_url,
+        'view_count': paste.view_count
+    } for paste in pastes])
+
+@app.route('/api/paste', methods=['POST'])
+def receive_paste():
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # Get total views
-        cursor.execute(
-            "SELECT COUNT(*) FROM views WHERE paste_id = %s",
-            (paste_id,)
-        )
-        total_views = cursor.fetchone()[0]
-        
-        # Get recent views
-        cursor.execute(
-            "SELECT viewed_at FROM views WHERE paste_id = %s ORDER BY viewed_at DESC LIMIT 10",
-            (paste_id,)
-        )
-        recent_views = [row[0].isoformat() for row in cursor.fetchall()]
-        
-        cursor.close()
-        conn.close()
-        
-        return jsonify({
-            'paste_id': paste_id,
-            'total_views': total_views,
-            'recent_views': recent_views
-        }), 200
-        
+        data = request.json
+        paste_id = data['paste_id']
+        short_url = data['short_url']
+        content = data['content']
+        expires_at = data.get('expires_at')
+
+        paste = Paste.query.filter_by(paste_id=paste_id).first()
+
+        if paste:
+            paste.content = content
+            paste.short_url = short_url
+            paste.expires_at = datetime.fromisoformat(expires_at) if expires_at else None
+        else:
+            paste = Paste(
+                paste_id=paste_id,
+                short_url=short_url,
+                content=content,
+                expires_at=datetime.fromisoformat(expires_at) if expires_at else None
+            )
+            db.session.add(paste)
+
+        db.session.commit()
+        return jsonify({"message": "Paste received"}), 200
+
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        print(f"Error receiving paste: {str(e)}")
+        return jsonify({"error": f"Failed to process paste: {str(e)}"}), 400
+
+with app.app_context():
+    db.create_all()
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5003) 
+    app.run(host='0.0.0.0', port=5002, debug=True)
