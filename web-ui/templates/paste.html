@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+
+{% block title %}Create New Paste{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h4 class="mb-0">Create New Paste</h4>
+            </div>
+            <div class="card-body">
+                <form id="pasteForm">
+                    <div class="mb-3">
+                        <label for="content" class="form-label">Paste Content</label>
+                        <textarea class="form-control" id="content" name="content" rows="10" required></textarea>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="expiration" class="form-label">Expiration (minutes)</label>
+                                <input type="number" class="form-control" id="expiration" name="expiration" value="1440" min="1">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="visibility" class="form-label">Visibility</label>
+                                <select class="form-select" id="visibility" name="visibility">
+                                    <option value="public">Public</option>
+                                    <option value="private">Private</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Create Paste</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById('pasteForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const formData = {
+        content: document.getElementById('content').value,
+        expiration: parseInt(document.getElementById('expiration').value),
+        visibility: document.getElementById('visibility').value
+    };
+    
+    try {
+        const response = await fetch('/api/paste', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(formData)
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        window.location.href = `/paste/${data.short_url}`;
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Error creating paste: ' + error.message);
+    }
+});
+</script>
+{% endblock %} 

@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+
+{% block title %}Pastebin Microservices{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8 text-center">
+        <h1 class="display-4 mb-4">Welcome to Pastebin Microservices</h1>
+        <p class="lead mb-4">A simple pastebin service built with microservices architecture</p>
+        
+        <div class="d-grid gap-3 d-sm-flex justify-content-sm-center">
+            <a href="/paste" class="btn btn-primary btn-lg px-4 gap-3">Create New Paste</a>
+            <a href="/analytics" class="btn btn-outline-secondary btn-lg px-4">View Analytics</a>
+        </div>
+    </div>
+</div>
+{% endblock %} 
