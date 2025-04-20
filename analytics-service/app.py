@@ -91,21 +91,50 @@ def index():
                           avg_latency=0,
                           backfill_count=0)
 
+@app.route('/system')
+def system_metrics():
+    """
+    Display system-level analytics and performance metrics.
+    """
+    # Provide dummy data for the template
+    dummy_hourly_data = [{'hour': f'{h:02d}:00', 'count': 0, 'avg_time': 0.0} for h in range(24)]
+    dummy_error_details = {'ExampleError': 0, 'AnotherError': 0}
+
+    return render_template(
+        'system_analytics.html',
+        current_ingestion_rate=0,
+        current_error_rate=0,
+        current_avg_latency=0,
+        backfill_count=0,
+        hourly_events=dummy_hourly_data,
+        hourly_errors=dummy_hourly_data,
+        hourly_latency=dummy_hourly_data,
+        error_details=dummy_error_details
+    )
+
 @app.route('/api/track-view', methods=['POST'])
 def track_view():
     """
     API: Receives paste view data from the View service.
     """
+    print("=== TRACK VIEW API CALLED ===")
+    print(f"Remote address: {request.remote_addr}")
+    print(f"Headers: {request.headers}")
+    
     try:
         data = request.json
+        print(f"Received data: {data}")
         
         if not data or not all(k in data for k in ['paste_id', 'short_url', 'view_count']):
+            print("Error: Missing required fields in request")
             return jsonify({"error": "Missing required fields"}), 400
         
         # Extract required fields
         paste_id = data['paste_id']
         short_url = data['short_url']
         view_count = data['view_count']
+        
+        print(f"Processing view for paste_id={paste_id}, short_url={short_url}, view_count={view_count}")
         
         # Extract optional fields
         ip_address = request.remote_addr
@@ -125,11 +154,14 @@ def track_view():
             db.session.commit()
         except Exception as e:
             db.session.rollback()
+            print(f"Database error: {str(e)}")
             return jsonify({"error": f"Database error: {str(e)}"}), 500
         
+        print("View tracked successfully")
         return jsonify({"success": True, "message": "View tracked successfully"}), 200
         
     except Exception as e:
+        print(f"Server error: {str(e)}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 # Create database tables
