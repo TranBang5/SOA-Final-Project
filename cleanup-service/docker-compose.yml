@@ -1,0 +1,64 @@
+version: "3.8"
+
+services:
+  # Cleanup Service
+  cleanup-service:
+    build: .
+    container_name: cleanup-service
+    restart: unless-stopped
+    ports:
+      - "5004:5004"
+    environment:
+      - DATABASE_URL=mysql+mysqlconnector://cleanup_user:cleanup_pass@cleanup-db/cleanup_db
+      - VIEW_SERVICE_URL=http://view-service:5002
+      - ANALYTIC_SERVICE_URL=http://analytic-service:5003
+      - REQUEST_TIMEOUT=5
+      - CLEANUP_INTERVAL=3600
+    depends_on:
+      - cleanup-db
+    networks:
+      - paste-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5004/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Cleanup Database
+  cleanup-db:
+    image: mysql:8.0
+    container_name: cleanup-db
+    restart: unless-stopped
+    environment:
+      - MYSQL_ROOT_PASSWORD=root_password
+      - MYSQL_DATABASE=cleanup_db
+      - MYSQL_USER=cleanup_user
+      - MYSQL_PASSWORD=cleanup_pass
+    volumes:
+      - cleanup-db-data:/var/lib/mysql
+    networks:
+      - paste-network
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "mysqladmin",
+          "ping",
+          "-h",
+          "localhost",
+          "-u",
+          "cleanup_user",
+          "-pcleanup_pass",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  paste-network:
+    driver: bridge
+
+volumes:
+  cleanup-db-data:
