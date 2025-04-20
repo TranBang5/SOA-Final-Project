@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+
+{% block title %}Paste Analytics{% endblock %}
+
+{% block content %}
+<h2 class="mb-4">Paste Analytics: {{ paste.short_url }}</h2>
+
+<div class="row">
+    <div class="col-md-4">
+        <div class="metric-card bg-light">
+            <div class="metric-title">Total Views</div>
+            <div class="metric-value">{{ total_views }}</div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="metric-card bg-light">
+            <div class="metric-title">Unique Viewers</div>
+            <div class="metric-value">{{ unique_viewers }}</div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="metric-card bg-light">
+            <div class="metric-title">Avg Views Per Session</div>
+            <div class="metric-value">{{ avg_views_per_session }}</div>
+        </div>
+    </div>
+</div>
+
+<div class="card mt-4">
+    <div class="card-header">
+        Daily View Trend (Last 7 Days)
+    </div>
+    <div class="card-body">
+        <canvas id="viewTrendsChart"></canvas>
+    </div>
+</div>
+
+<div class="card mt-4">
+    <div class="card-header">
+        View Details
+    </div>
+    <div class="card-body">
+        <table class="table table-striped">
+            <tr>
+                <th>Paste ID:</th>
+                <td>{{ paste.paste_id }}</td>
+                <th>Short URL:</th>
+                <td>{{ paste.short_url }}</td>
+            </tr>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const dates = [
+        {% for day in daily_views %}
+            '{{ day.date }}',
+        {% endfor %}
+    ];
+    
+    const viewCounts = [
+        {% for day in daily_views %}
+            {{ day.count }},
+        {% endfor %}
+    ];
+    
+    const ctx = document.getElementById('viewTrendsChart').getContext('2d');
+    const myChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: dates,
+            datasets: [{
+                label: 'Daily Views',
+                data: viewCounts,
+                backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                borderColor: 'rgba(75, 192, 192, 1)',
+                borderWidth: 1
+            }]
+        },
+        options: {
+            scales: {
+                y: {
+                    beginAtZero: true
+                }
+            }
+        }
+    });
+</script>
+{% endblock %}

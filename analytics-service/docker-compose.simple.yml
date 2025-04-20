@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  analytics-simple:
+    build:
+      context: .
+      dockerfile: Dockerfile.simple
+    container_name: analytics-simple
+    restart: always
+    ports:
+      - "8080:8080"
+    networks:
+      - analytics-network
+
+networks:
+  analytics-network:
+    driver: bridge
