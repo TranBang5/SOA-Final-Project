@@ -24,7 +24,8 @@ services:
     restart: always
     environment:
       DATABASE_URL: mysql+mysqlconnector://view_user:view_pass@view-db/view_db
-      PASTE_SERVICE_URL: http://paste-service:5001  # You can replace or connect it to the actual paste service
+      PASTE_SERVICE_URL: http://paste-service:5001
+      ANALYTIC_SERVICE_URL: http://192.168.105.15:8080  # Updated to use your local IP and port
     depends_on:
       - view-db
     ports:
