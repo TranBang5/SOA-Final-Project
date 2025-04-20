@@ -57,12 +57,15 @@ class Paste(db.Model):
         }
 
 # Cleanup function
+# Cleanup function
 def cleanup_expired_pastes():
+    """
+    Periodically checks for and deletes expired pastes across all services.
+    """
     while True:
         try:
             logger.info("Starting cleanup of expired pastes")
             now = datetime.utcnow()
-
             expired_pastes = Paste.query.filter(
                 Paste.expires_at <= now,
                 Paste.is_deleted == False
@@ -70,15 +73,20 @@ def cleanup_expired_pastes():
 
             if expired_pastes:
                 logger.info(f"Found {len(expired_pastes)} expired pastes to delete")
-
                 for paste in expired_pastes:
+                    paste_id = paste.paste_id
+
+                    # Mark in local DB
+                    paste.is_deleted = True
+                    paste.deleted_at = now
+
+                    # Notify other services to delete
                     try:
-                        notify_analytic_service(paste)
+                        delete_from_paste_service(paste_id)
+                        delete_from_analytic_service(paste_id)
+                        logger.info(f"Deleted paste {paste_id} from all services")
                     except Exception as e:
-                        logger.error(f"Failed to notify analytic service about deleted paste {paste.paste_id}: {str(e)}")
-                    
-                    # Hard delete the paste
-                    db.session.delete(paste)
+                        logger.error(f"Error deleting paste {paste_id} from other services: {str(e)}")
 
                 db.session.commit()
                 logger.info(f"Successfully deleted {len(expired_pastes)} expired pastes")
@@ -91,6 +99,21 @@ def cleanup_expired_pastes():
 
         logger.info(f"Cleanup completed. Next cleanup in {CLEANUP_INTERVAL} seconds")
         time.sleep(CLEANUP_INTERVAL)
+
+# New helper functions
+def delete_from_paste_service(paste_id):
+    response = requests.delete(
+        f"{os.getenv('PASTE_SERVICE_URL', 'http://paste-service:5001')}/api/paste/{paste_id}",
+        timeout=REQUEST_TIMEOUT
+    )
+    response.raise_for_status()
+
+def delete_from_analytic_service(paste_id):
+    response = requests.delete(
+        f"{ANALYTIC_SERVICE_URL}/api/paste/{paste_id}",
+        timeout=REQUEST_TIMEOUT
+    )
+    response.raise_for_status()
 
 def notify_analytic_service(paste):
     """
