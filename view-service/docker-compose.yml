@@ -32,5 +32,6 @@ services:
     volumes:
       - .:/app  # Mount current directory for live reloading/templates
 
+
 volumes:
   view-db-data:

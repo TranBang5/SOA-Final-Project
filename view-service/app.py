@@ -83,7 +83,6 @@ def send_view_to_analytic(paste):
     except Exception as e:
         print("Error communicating with Analytic service:", e)
 
-
 # -----------------------------
 # API Endpoints
 # -----------------------------
