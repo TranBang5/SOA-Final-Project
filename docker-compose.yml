@@ -1,0 +1,95 @@
+version: "3.8"
+
+services:
+  # ----------------- View Service -----------------
+  view-service:
+    build:
+      context: ./view-service
+      dockerfile: Dockerfile
+    container_name: view-service
+    ports:
+      - "5002:5002"
+    volumes:
+      - ./view-service:/app
+    environment:
+      DATABASE_URL: mysql+mysqlconnector://view_user:view_pass@view-db/view_db
+      PASTE_SERVICE_URL: http://paste-service:5001
+      ANALYTIC_SERVICE_URL: http://analytics-service:5003
+    depends_on:
+      view-db:
+        condition: service_healthy
+      analytics-service:
+        condition: service_started
+    networks:
+      - paste-network
+
+  view-db:
+    image: mysql:8.0
+    container_name: view-db
+    restart: always
+    environment:
+      MYSQL_DATABASE: view_db
+      MYSQL_USER: view_user
+      MYSQL_PASSWORD: view_pass
+      MYSQL_ROOT_PASSWORD: rootpass
+    volumes:
+      - view-db-data:/var/lib/mysql
+    ports:
+      - "3307:3306"
+    networks:
+      - paste-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "view_user", "-pview_pass"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # ----------------- Analytics Service -----------------
+  analytics-service:
+    build:
+      context: ./analytics-service
+      dockerfile: Dockerfile
+    container_name: analytics-service
+    ports:
+      - "5003:5003"
+    volumes:
+      - ./analytics-service:/app
+    environment:
+      - DATABASE_URL=mysql+mysqlconnector://analytics_user:analytics_pass@analytics-db/analytics_db
+    depends_on:
+      analytics-db:
+        condition: service_healthy
+    networks:
+      - paste-network
+
+  analytics-db:
+    image: mysql:8.0
+    container_name: analytics-db
+    restart: always
+    environment:
+      MYSQL_DATABASE: analytics_db
+      MYSQL_USER: analytics_user
+      MYSQL_PASSWORD: analytics_pass
+      MYSQL_ROOT_PASSWORD: rootpass
+    volumes:
+      - analytics-db-data:/var/lib/mysql
+    ports:
+      - "3308:3306"
+    networks:
+      - paste-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "analytics_user", "-panalytics_pass"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+# ----------------- Volumes & Network -----------------
+volumes:
+  view-db-data:
+  analytics-db-data:
+
+networks:
+  paste-network:
+    driver: bridge
