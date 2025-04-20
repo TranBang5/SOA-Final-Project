@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+
+{% block title %}View Paste{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-10">
+        <div class="card">
+            <div class="card-header">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Paste Details</h5>
+                    <span class="badge bg-secondary">Views: {{ paste.view_count }}</span>
+                </div>
+            </div>
+            <div class="card-body">
+                {% if paste.expires_at %}
+                <div class="mb-3">
+                    <label class="form-label">Expires At</label>
+                    <p>{{ paste.expires_at.strftime('%Y-%m-%d %H:%M:%S') }}</p>
+                </div>
+                {% endif %}
+                <div class="mb-3">
+                    <label class="form-label">Content</label>
+                    <pre class="bg-light p-3 rounded">{{ paste.content }}</pre>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Share URL</label>
+                    <div class="input-group">
+                        <input type="text" class="form-control" id="shareUrl" value="{{ url_for('view_by_short_url', short_url=paste.short_url, _external=True) }}" readonly>
+                        <button class="btn btn-copy" type="button" onclick="copyToClipboard()">Copy</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function copyToClipboard() {
+        const shareUrl = document.getElementById('shareUrl');
+        shareUrl.select();
+        document.execCommand('copy');
+        
+        const button = document.querySelector('.btn-copy');
+        const originalText = button.textContent;
+        button.textContent = 'Copied!';
+        setTimeout(() => {
+            button.textContent = originalText;
+        }, 2000);
+    }
+</script>
+{% endblock %} 

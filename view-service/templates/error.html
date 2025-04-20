@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+
+{% block title %}Error{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0 text-danger">Error</h5>
+            </div>
+            <div class="card-body">
+                <p class="mb-0">{{ message }}</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} 
