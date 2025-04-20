@@ -24,13 +24,23 @@ services:
     restart: always
     environment:
       DATABASE_URL: mysql+mysqlconnector://view_user:view_pass@view-db/view_db
-      PASTE_SERVICE_URL: http://paste-service:5001  # You can replace or connect it to the actual paste service
+      PASTE_SERVICE_URL: http://paste-service:5001
+      ANALYTIC_SERVICE_URL: http://analytics-service:5003  # Add URL for analytics service
     depends_on:
       - view-db
     ports:
       - "5002:5002"
     volumes:
       - .:/app  # Mount current directory for live reloading/templates
+    networks:
+      - analytics-network
+      - default
+
 
 volumes:
   view-db-data:
+
+networks:
+  analytics-network:
+    external: true
+    name: analytics-network
