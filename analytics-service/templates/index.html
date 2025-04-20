@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<h2 class="mb-4">Analytics Dashboard</h2>
+
+<div class="row">
+    <div class="col-md-4">
+        <div class="metric-card bg-light">
+            <div class="metric-title">Today's Views</div>
+            <div class="metric-value">{{ today_views }}</div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="metric-card bg-light">
+            <div class="metric-title">This Week's Views</div>
+            <div class="metric-value">{{ week_views }}</div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="metric-card bg-light">
+            <div class="metric-title">This Month's Views</div>
+            <div class="metric-value">{{ month_views }}</div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                Top 5 Most Viewed Pastes
+            </div>
+            <div class="card-body">
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>Paste ID</th>
+                            <th>Short URL</th>
+                            <th>Views</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for paste in top_pastes %}
+                        <tr>
+                            <td>{{ paste.paste_id }}</td>
+                            <td>{{ paste.short_url }}</td>
+                            <td>{{ paste.view_count }}</td>
+                            <td>
+                                <a href="/paste/{{ paste.paste_id }}" class="btn btn-sm btn-primary">Analytics</a>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="4" class="text-center">No paste data available</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                Top 5 Power Users
+            </div>
+            <div class="card-body">
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>User ID</th>
+                            <th>Views</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for user in top_users %}
+                        <tr>
+                            <td>{{ user.user_id }}</td>
+                            <td>{{ user.view_count }}</td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="2" class="text-center">No user data available</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                System Performance
+            </div>
+            <div class="card-body">
+                <div class="metric-card bg-light mb-3">
+                    <div class="metric-title">Event Ingestion Rate</div>
+                    <div class="metric-value">{{ ingestion_rate }} events/sec</div>
+                </div>
+                <div class="metric-card bg-light mb-3">
+                    <div class="metric-title">Error Rate</div>
+                    <div class="metric-value">{{ error_rate }}%</div>
+                </div>
+                <div class="metric-card bg-light mb-3">
+                    <div class="metric-title">Avg Processing Latency</div>
+                    <div class="metric-value">{{ avg_latency }} ms</div>
+                </div>
+                <div class="metric-card bg-light">
+                    <div class="metric-title">Backfill Events</div>
+                    <div class="metric-value">{{ backfill_count }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                View Trends
+            </div>
+            <div class="card-body">
+                <canvas id="viewTrendsChart"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Placeholder for a chart that would show view trends over time
+    // In a real implementation, this would fetch data from an API endpoint
+    const ctx = document.getElementById('viewTrendsChart').getContext('2d');
+    const myChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: ['Day 1', 'Day 2', 'Day 3', 'Day 4', 'Day 5', 'Day 6', 'Day 7'],
+            datasets: [{
+                label: 'Daily Views',
+                data: [12, 19, 3, 5, 2, 3, 20],
+                backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                borderColor: 'rgba(54, 162, 235, 1)',
+                borderWidth: 1
+            }]
+        },
+        options: {
+            scales: {
+                y: {
+                    beginAtZero: true
+                }
+            }
+        }
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,204 @@
+{% extends "base.html" %}
+
+{% block title %}System Metrics{% endblock %}
+
+{% block content %}
+<h2 class="mb-4">System Metrics</h2>
+
+<div class="row">
+    <div class="col-md-3">
+        <div class="metric-card bg-light">
+            <div class="metric-title">Current Ingestion Rate</div>
+            <div class="metric-value">{{ current_ingestion_rate }} events/sec</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="metric-card bg-light">
+            <div class="metric-title">Current Error Rate</div>
+            <div class="metric-value">{{ current_error_rate }}%</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="metric-card bg-light">
+            <div class="metric-title">Avg Processing Latency</div>
+            <div class="metric-value">{{ current_avg_latency }} ms</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="metric-card bg-light">
+            <div class="metric-title">Backfilled Events</div>
+            <div class="metric-value">{{ backfill_count }}</div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                Hourly Event Ingestion (Last 24 Hours)
+            </div>
+            <div class="card-body">
+                <canvas id="eventRateChart"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                Hourly Error Rate (Last 24 Hours)
+            </div>
+            <div class="card-body">
+                <canvas id="errorRateChart"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                Processing Latency (Last 24 Hours)
+            </div>
+            <div class="card-body">
+                <canvas id="latencyChart"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                Error Breakdown
+            </div>
+            <div class="card-body">
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>Error Type</th>
+                            <th>Count</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for error_type, count in error_details.items() %}
+                        <tr>
+                            <td>{{ error_type }}</td>
+                            <td>{{ count }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Event Rate Chart
+    const eventHours = [
+        {% for hour in hourly_events %}
+            '{{ hour.hour }}',
+        {% endfor %}
+    ];
+    
+    const eventCounts = [
+        {% for hour in hourly_events %}
+            {{ hour.count }},
+        {% endfor %}
+    ];
+    
+    const eventRateCtx = document.getElementById('eventRateChart').getContext('2d');
+    new Chart(eventRateCtx, {
+        type: 'line',
+        data: {
+            labels: eventHours,
+            datasets: [{
+                label: 'Event Count',
+                data: eventCounts,
+                backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                borderColor: 'rgba(54, 162, 235, 1)',
+                borderWidth: 1
+            }]
+        },
+        options: {
+            scales: {
+                y: {
+                    beginAtZero: true
+                }
+            }
+        }
+    });
+    
+    // Error Rate Chart
+    const errorHours = [
+        {% for hour in hourly_errors %}
+            '{{ hour.hour }}',
+        {% endfor %}
+    ];
+    
+    const errorCounts = [
+        {% for hour in hourly_errors %}
+            {{ hour.count }},
+        {% endfor %}
+    ];
+    
+    const errorRateCtx = document.getElementById('errorRateChart').getContext('2d');
+    new Chart(errorRateCtx, {
+        type: 'line',
+        data: {
+            labels: errorHours,
+            datasets: [{
+                label: 'Error Count',
+                data: errorCounts,
+                backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                borderColor: 'rgba(255, 99, 132, 1)',
+                borderWidth: 1
+            }]
+        },
+        options: {
+            scales: {
+                y: {
+                    beginAtZero: true
+                }
+            }
+        }
+    });
+    
+    // Latency Chart
+    const latencyHours = [
+        {% for hour in hourly_latency %}
+            '{{ hour.hour }}',
+        {% endfor %}
+    ];
+    
+    const latencyValues = [
+        {% for hour in hourly_latency %}
+            {{ hour.avg_time * 1000 }}, // Convert to ms
+        {% endfor %}
+    ];
+    
+    const latencyCtx = document.getElementById('latencyChart').getContext('2d');
+    new Chart(latencyCtx, {
+        type: 'line',
+        data: {
+            labels: latencyHours,
+            datasets: [{
+                label: 'Avg Processing Time (ms)',
+                data: latencyValues,
+                backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                borderColor: 'rgba(75, 192, 192, 1)',
+                borderWidth: 1
+            }]
+        },
+        options: {
+            scales: {
+                y: {
+                    beginAtZero: true
+                }
+            }
+        }
+    });
+</script>
+{% endblock %}
