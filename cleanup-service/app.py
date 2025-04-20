@@ -58,44 +58,37 @@ class Paste(db.Model):
 
 # Cleanup function
 def cleanup_expired_pastes():
-    """
-    Periodically checks for and marks expired pastes as deleted.
-    """
     while True:
         try:
             logger.info("Starting cleanup of expired pastes")
             now = datetime.utcnow()
-            
-            # Find expired pastes that haven't been marked as deleted
+
             expired_pastes = Paste.query.filter(
                 Paste.expires_at <= now,
                 Paste.is_deleted == False
             ).all()
-            
+
             if expired_pastes:
-                logger.info(f"Found {len(expired_pastes)} expired pastes to clean up")
-                
+                logger.info(f"Found {len(expired_pastes)} expired pastes to delete")
+
                 for paste in expired_pastes:
-                    # Mark as deleted
-                    paste.is_deleted = True
-                    paste.deleted_at = now
-                    
-                    # Notify analytic service
                     try:
                         notify_analytic_service(paste)
                     except Exception as e:
                         logger.error(f"Failed to notify analytic service about deleted paste {paste.paste_id}: {str(e)}")
-                
+                    
+                    # Hard delete the paste
+                    db.session.delete(paste)
+
                 db.session.commit()
-                logger.info(f"Successfully marked {len(expired_pastes)} pastes as deleted")
+                logger.info(f"Successfully deleted {len(expired_pastes)} expired pastes")
             else:
                 logger.info("No expired pastes found")
-                
+
         except Exception as e:
             logger.error(f"Error during cleanup: {str(e)}")
             db.session.rollback()
-        
-        # Sleep until next cleanup
+
         logger.info(f"Cleanup completed. Next cleanup in {CLEANUP_INTERVAL} seconds")
         time.sleep(CLEANUP_INTERVAL)
 
