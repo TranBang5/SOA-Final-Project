@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   # ----------------- View Service -----------------
   view-service:
@@ -9,11 +7,12 @@ services:
     container_name: view-service
     ports:
       - "5002:5002"
-    volumes:
-      - ./view-service:/app
+    # 🔥 REMOVE this line to avoid volume override
+    # volumes:
+    #   - ./view-service:/app
     environment:
       DATABASE_URL: mysql+mysqlconnector://view_user:view_pass@view-db/view_db
-      PASTE_SERVICE_URL: http://paste-service:5001
+      PASTE_SERVICE_URL: http://paste-service:5000
       ANALYTIC_SERVICE_URL: http://analytics-service:5003
     depends_on:
       view-db:
@@ -85,10 +84,103 @@ services:
       retries: 5
       start_period: 15s
 
+  # ----------------- Paste Service -----------------
+  paste-service:
+    build:
+      context: ./paste-service
+      dockerfile: Dockerfile
+    container_name: paste-service
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./paste-service:/app
+    environment:
+      DB_USER: paste_user
+      DB_PASS: paste_pass
+      DB_HOST: paste-db
+      DB_NAME: paste_db
+      VIEW_SERVICE_URL: http://view-service:5002
+    depends_on:
+      paste-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_started
+    networks:
+      - paste-network
+
+  paste-db:
+    image: mysql:8.0
+    container_name: paste-db
+    restart: always
+    environment:
+      MYSQL_DATABASE: paste_db
+      MYSQL_USER: paste_user
+      MYSQL_PASSWORD: paste_pass
+      MYSQL_ROOT_PASSWORD: rootpass
+    ports:
+      - "3309:3306"
+    volumes:
+      - paste-db-data:/var/lib/mysql
+    networks:
+      - paste-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "paste_user", "-ppaste_pass"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # ----------------- RabbitMQ -----------------
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    networks:
+      - paste-network
+
+  # ----------------- Cleanup Service -----------------
+  cleanup-service:
+    build:
+      context: ./cleanup-service
+      dockerfile: Dockerfile
+    container_name: cleanup-service
+    volumes:
+      - ./cleanup-service:/app
+    environment:
+      VIEW_SERVICE_URL: http://view-service:5002
+      ANALYTIC_SERVICE_URL: http://analytics-service:5003
+      REQUEST_TIMEOUT: 5
+      CLEANUP_INTERVAL: 3600
+    depends_on:
+      - view-service
+      - analytics-service
+    networks:
+      - paste-network
+
+  # ----------------- Locust Load Testing -----------------
+  locust:
+    build:
+      context: ./locust
+      dockerfile: Dockerfile
+    container_name: locust
+    ports:
+      - "5089:5089"
+    volumes:
+      - ./locust:/app
+    networks:
+      - paste-network
+    depends_on:
+      - paste-service
+      - view-service
+      - analytics-service
+
 # ----------------- Volumes & Network -----------------
 volumes:
   view-db-data:
   analytics-db-data:
+  paste-db-data:
 
 networks:
   paste-network:

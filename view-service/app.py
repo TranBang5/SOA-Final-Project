@@ -17,7 +17,7 @@ ANALYTIC_SERVICE_URL = os.getenv('ANALYTIC_SERVICE_URL', 'http://analytic-servic
 # Models
 class Paste(db.Model):
     paste_id = db.Column(db.Integer, primary_key=True)
-    short_url = db.Column(db.String(10), nullable=False)
+    short_url = db.Column(db.String(255), nullable=False)
     content = db.Column(db.Text, nullable=False)
     expires_at = db.Column(db.DateTime)
     view_count = db.Column(db.Integer, default=0)
@@ -111,38 +111,52 @@ def get_pastes():
 
 @app.route('/api/paste', methods=['POST'])
 def receive_paste():
-    """
-    API: Receives paste data from the Paste service.
-    - Creates or updates a paste in the local DB
-    """
     try:
-        data = request.json
+        data = request.get_json(force=True)
+        if not data:
+            raise ValueError("No JSON data provided")
+
+        required_fields = ['paste_id', 'short_url', 'content']
+        for field in required_fields:
+            if field not in data:
+                raise ValueError(f"Missing required field: {field}")
+
         paste_id = data['paste_id']
         short_url = data['short_url']
         content = data['content']
         expires_at = data.get('expires_at')
 
-        paste = Paste.query.filter_by(paste_id=paste_id).first()
+        expires_at_dt = None
+        if expires_at:
+            try:
+                expires_at_dt = datetime.fromisoformat(expires_at.replace('Z', '+00:00'))
+            except ValueError as e:
+                raise ValueError(f"Invalid expires_at format: {str(e)}")
 
+        paste = Paste.query.filter_by(paste_id=paste_id).first()
         if paste:
-            paste.content = content
             paste.short_url = short_url
-            paste.expires_at = datetime.fromisoformat(expires_at) if expires_at else None
+            paste.content = content
+            paste.expires_at = expires_at_dt
         else:
             paste = Paste(
                 paste_id=paste_id,
                 short_url=short_url,
                 content=content,
-                expires_at=datetime.fromisoformat(expires_at) if expires_at else None
+                expires_at=expires_at_dt,
+                view_count=0
             )
             db.session.add(paste)
 
         db.session.commit()
-        return jsonify({"message": "Paste received"}), 200
+        return jsonify({"message": "Paste successfully received and stored"}), 200
 
     except Exception as e:
-        print(f"Error receiving paste: {str(e)}")
-        return jsonify({"error": f"Failed to process paste: {str(e)}"}), 400
+        print(f"❌ View Service Error: {str(e)}")
+        import traceback
+        print("Traceback:", traceback.format_exc())
+        return jsonify({"error": str(e)}), 400
+
 
 with app.app_context():
     db.create_all()
