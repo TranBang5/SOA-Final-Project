@@ -24,11 +24,11 @@ services:
     build:
       context: ./view-service
       dockerfile: Dockerfile
-    command: celery -A app.celery_app worker --loglevel=info --concurrency=4
+    command: celery -A app.celery_app worker --loglevel=info --concurrency=8
     volumes:
       - ./view-service:/app
     environment:
-      - DATABASE_URL=mysql+mysqlconnector://view_user:view_pass@view-db:3306/view_db
+      - DATABASE_URL=mysql+mysqlconnector://view_user:view_pass@view-db/view_db
       - PASTE_SERVICE_URL=http://view-haproxy:80
       - ANALYTIC_SERVICE_URL=http://analytics-service:5003
       - C_FORCE_ROOT=true
@@ -116,7 +116,7 @@ services:
       - view-db-data:/var/lib/mysql
       - ./view-db/my.cnf:/etc/mysql/my.cnf
     ports:
-      - "3307:3306"
+      - "3307:3307"
     networks:
       - paste-network
     healthcheck:
@@ -154,7 +154,7 @@ services:
     volumes:
       - analytics-db-data:/var/lib/mysql
     ports:
-      - "3308:3306"
+      - "3308:3308"
     networks:
       - paste-network
     healthcheck:
@@ -167,6 +167,9 @@ services:
     build:
       context: ./paste-service
       dockerfile: Dockerfile
+    container_name: paste-service 
+    ports:
+      - "5000:5000"
     volumes:
       - ./paste-service:/app
     environment:
@@ -185,12 +188,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
-    deploy:
-      replicas: 3
-      resources:
-        limits:
-          cpus: '2.0'
-          memory: '4096M'
+
   paste-db:
     image: mysql:8.0
     container_name: paste-db
@@ -201,7 +199,7 @@ services:
       MYSQL_PASSWORD: paste_pass
       MYSQL_ROOT_PASSWORD: rootpass
     ports:
-      - "3309:3306"
+      - "3306:3306"
     volumes:
       - paste-db-data:/var/lib/mysql
     networks:

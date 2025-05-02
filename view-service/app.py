@@ -17,8 +17,8 @@ app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'mysql+pymysql://view_user:view_pass@view-db:3306/view_db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
-    'pool_size': 48,
-    'max_overflow': 32,
+    'pool_size': 100,
+    'max_overflow': 50,
     'pool_timeout': 10,
     'pool_recycle': 300,
     'pool_pre_ping': True
@@ -92,10 +92,24 @@ def health():
 # Routes
 @app.route('/')
 def index():
+    cache_key = "index:pastes"
+    cached = redis_client.get(cache_key)
+    if cached:
+        pastes = [Paste(**paste_data) for paste_data in json.loads(cached)]
+        return render_template('index.html', pastes=pastes)
+
     try:
         pastes = db.session.query(Paste).filter(
             (Paste.expires_at > datetime.utcnow()) | (Paste.expires_at == None)
         ).order_by(Paste.paste_id.desc()).limit(50).all()
+        paste_data = [{
+            'paste_id': p.paste_id,
+            'short_url': p.short_url,
+            'content': p.content,
+            'expires_at': p.expires_at.isoformat() if p.expires_at else None,
+            'view_count': p.view_count
+        } for p in pastes]
+        redis_client.setex(cache_key, 60, json.dumps(paste_data))
         return render_template('index.html', pastes=pastes)
     except OperationalError as e:
         app.logger.error(f"Database connection error in index: {str(e)}")
@@ -143,6 +157,7 @@ def view_by_short_url(short_url):
                     return render_template('error.html', message='Database unavailable'), 503
 
         if paste.expires_at and paste.expires_at < datetime.utcnow():
+            redis_client.setex(cache_key, 60, json.dumps({"expired": True}))
             return render_template('error.html', message='Paste has expired', expired_at=paste.expires_at), 410
 
         send_view_to_analytic(paste)
@@ -186,7 +201,7 @@ def sync_view_counts():
                         if cached_paste:
                             paste_data = json.loads(cached_paste)
                             paste_data['view_count'] = count
-                            redis_client.setex(cache_key, 3600, json.dumps(paste_data))
+                            redis_client.setex(cache_key, 86400, json.dumps(paste_data))
                 except OperationalError as e:
                     app.logger.error(f"Database connection error in sync_view_counts: {str(e)}")
                     continue

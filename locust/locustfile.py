@@ -79,7 +79,8 @@ class PasteServiceUser(HttpUser):
         self.view_client = HttpSession(
             base_url=self.view_service_url,
             request_event=self.environment.events.request,
-            user=self
+            user=self,
+            headers={"Connection": "keep-alive"}
         )
         self.create_paste()
 
