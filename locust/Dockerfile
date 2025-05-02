@@ -1,16 +1,7 @@
-FROM python:3.9-slim
-
-# Install Locust
-RUN pip install locust
-
-# Set working directory
+FROM python:3.11-slim
 WORKDIR /app
-
-# Copy Locust file
-COPY locustfile.py .
-
-# Expose Locust web interface port
-EXPOSE 5089
-
-# Run Locust
-CMD ["locust", "-f", "locustfile.py", "--host=http://view-service:5002", "--web-host=0.0.0.0", "--web-port=5089"]
+COPY ../locust/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY . .
+EXPOSE 8089 5557
+CMD ["locust", "-f", "locustfile.py"]

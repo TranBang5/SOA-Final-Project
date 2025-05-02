@@ -6,7 +6,7 @@ DROP TABLE IF EXISTS paste;
 
 CREATE TABLE IF NOT EXISTS paste (
     paste_id INT NOT NULL PRIMARY KEY,  -- Make paste_id the primary key
-    short_url VARCHAR(10) NOT NULL,
+    short_url VARCHAR(255) NOT NULL,
     content TEXT NOT NULL,
     expires_at DATETIME,
     view_count INT DEFAULT 0,
@@ -23,4 +23,7 @@ CREATE TABLE IF NOT EXISTS views (
     INDEX idx_paste_id (paste_id),
     FOREIGN KEY (paste_id) REFERENCES pastes(paste_id)
 );
+
+GRANT ALL PRIVILEGES ON view_db.* TO 'view_user'@'%' IDENTIFIED BY 'view_pass';
+FLUSH PRIVILEGES;
 

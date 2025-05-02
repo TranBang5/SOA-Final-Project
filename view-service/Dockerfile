@@ -11,5 +11,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy app code into container
 COPY . .
 
-# Run Flask app on port 5002
-CMD ["python", "app.py"]
+RUN pip install --no-cache-dir gevent mysql-connector-python
+ENV DB_POOL_SIZE=32
+CMD ["gunicorn", "--worker-class", "gevent", "-w", "8", "--threads", "50", "--worker-tmp-dir", "/dev/shm", "--timeout", "20", "--keep-alive", "3", "--log-level", "info", "--access-logfile", "-", "--error-logfile", "-", "-b", "0.0.0.0:5002", "app:app"]

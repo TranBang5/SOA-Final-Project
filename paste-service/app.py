@@ -41,23 +41,22 @@ def map_expiration(minutes):
 
 def send_to_view_service(paste):
     try:
-        expires_at_value = (
-            paste.expires_at.isoformat() if paste.expires_at else None
-        )
-
+        expires_at_value = paste.expires_at.isoformat() if paste.expires_at else None
         paste_data = {
             "paste_id": int(paste.id),
             "short_url": str(paste.url),
             "content": str(paste.content),
             "expires_at": expires_at_value
         }
-
-        response = requests.post(f"{VIEW_SERVICE_URL}/api/paste", json=paste_data)
+        app.logger.info(f"Sending paste to view service: {paste_data}")
+        response = requests.post(f"{VIEW_SERVICE_URL}/api/paste", json=paste_data, timeout=5)
         if response.status_code != 200:
-            print("View Service Error:", response.status_code)
-            print("Response Body:", response.text)
+            app.logger.error(f"View Service Error: {response.status_code}, Response: {response.text}")
+            raise Exception(f"Failed to send paste to view service: {response.status_code}")
+        app.logger.info(f"Successfully sent paste to view service: {paste.url}")
     except Exception as e:
-        print(f"Error sending to view service: {e}")
+        app.logger.error(f"Error sending to view service: {e}")
+        raise
 
 
 # Routes
@@ -67,29 +66,33 @@ def home():
 
 @app.route("/pastes/", methods=["POST"])
 def create_paste():
-    data = request.json
-    content = data.get("content")
-    expires_in = data.get("expires_in")
-
-    if not content:
-        return jsonify({"error": "Content is required"}), 400
-
-    url = generate_url()
-    while Paste.query.filter_by(url=url).first():
+    try:
+        data = request.json
+        content = data.get("content")
+        expires_in = data.get("expires_in")
+        if not content:
+            return jsonify({"error": "Content is required"}), 400
         url = generate_url()
+        while Paste.query.filter_by(url=url).first():
+            url = generate_url()
+        paste = Paste(content=content, url=url, expires_at=map_expiration(expires_in))
+        db.session.add(paste)
+        db.session.commit()
+        send_to_view_service(paste)
+        return jsonify({
+            "id": paste.id,
+            "url": paste.url,
+            "created_at": paste.created_at,
+            "expires_at": paste.expires_at
+        }), 201
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"Failed to create paste: {e}")
+        return jsonify({"error": str(e)}), 500
 
-    paste = Paste(content=content, url=url, expires_at=map_expiration(expires_in))
-    db.session.add(paste)
-    db.session.commit()
-
-    send_to_view_service(paste)
-
-    return jsonify({
-        "id": paste.id,
-        "url": paste.url,
-        "created_at": paste.created_at,
-        "expires_at": paste.expires_at
-    }), 201
+@app.route("/health", methods=["GET"])
+def health():
+    return jsonify({"status": "ok"}), 200
 
 @app.route("/pastes/<int:paste_id>", methods=["GET"])
 def get_paste_by_id(paste_id):
@@ -116,10 +119,6 @@ def get_paste_by_url(url):
         "created_at": paste.created_at,
         "expires_at": paste.expires_at
     })
-
-@app.route("/health", methods=["GET"])
-def health():
-    return jsonify({"status": "ok"}), 200
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
