@@ -25,7 +25,6 @@ class PasteServiceUser(HttpUser):
                 json=payload,
                 headers={"Content-Type": "application/json"},
                 name="Create Paste",
-                catch_response=True
             ) as response:
                 if response.status_code == 201:
                     data = response.json()
@@ -54,8 +53,8 @@ class PasteServiceUser(HttpUser):
         try:
             with self.view_client.get(
                 f"/paste/{short_url}",
+                headers={"Connection": "keep-alive"},
                 name="View Paste",
-                catch_response=True
             ) as response:
                 if response.status_code == 200:
                     response.success()
@@ -79,8 +78,7 @@ class PasteServiceUser(HttpUser):
         self.view_client = HttpSession(
             base_url=self.view_service_url,
             request_event=self.environment.events.request,
-            user=self,
-            headers={"Connection": "keep-alive"}
+            user=self
         )
         self.create_paste()
 

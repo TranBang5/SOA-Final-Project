@@ -115,8 +115,9 @@ services:
     volumes:
       - view-db-data:/var/lib/mysql
       - ./view-db/my.cnf:/etc/mysql/my.cnf
+      - ./view-db/init.sql:/docker-entrypoint-initdb.d/init.sql
     ports:
-      - "3307:3307"
+      - "3307:3306"
     networks:
       - paste-network
     healthcheck:
@@ -154,7 +155,7 @@ services:
     volumes:
       - analytics-db-data:/var/lib/mysql
     ports:
-      - "3308:3308"
+      - "3308:3306"
     networks:
       - paste-network
     healthcheck:
@@ -173,11 +174,8 @@ services:
     volumes:
       - ./paste-service:/app
     environment:
-      DB_USER: paste_user
-      DB_PASS: paste_pass
-      DB_HOST: paste-db
-      DB_NAME: paste_db
-      VIEW_SERVICE_URL: http://view-haproxy:80
+      - DATABASE_URL=mysql+mysqlconnector://paste_user:paste_pass@paste-db/paste_db
+      - VIEW_SERVICE_URL=http://view-haproxy:80
     depends_on:
       paste-db:
         condition: service_healthy
@@ -199,7 +197,7 @@ services:
       MYSQL_PASSWORD: paste_pass
       MYSQL_ROOT_PASSWORD: rootpass
     ports:
-      - "3309:3306"
+      - "3306:3306"
     volumes:
       - paste-db-data:/var/lib/mysql
     networks:
