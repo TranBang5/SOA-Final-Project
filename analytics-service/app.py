@@ -58,7 +58,7 @@ db = SQLAlchemy(app)
 class ViewEvent(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     paste_id = db.Column(db.Integer, nullable=False, index=True)
-    short_url = db.Column(db.String(10), nullable=False, index=True)
+    short_url = db.Column(db.String(255), nullable=False, index=True)
     view_count = db.Column(db.Integer, default=0)
     ip_address = db.Column(db.String(45), nullable=True)
     user_id = db.Column(db.String(36), nullable=True)
@@ -77,19 +77,200 @@ class ProcessingError(db.Model):
 # Routes
 @app.route('/')
 def index():
+    now = datetime.utcnow()
+    today = now.date()
+    week_ago = now - timedelta(days=7)
+    month_ago = now - timedelta(days=30)
+    
+    # Get the most recent view count per paste and sum them
+    today_views = db.session.query(func.max(ViewEvent.view_count)) \
+        .filter(func.date(ViewEvent.timestamp) == today) \
+        .group_by(ViewEvent.paste_id).all()
+    today_views = sum(v[0] for v in today_views) if today_views else 0
+
+    week_views = db.session.query(func.max(ViewEvent.view_count)) \
+        .filter(ViewEvent.timestamp >= week_ago) \
+        .group_by(ViewEvent.paste_id).all()
+    week_views = sum(v[0] for v in week_views) if week_views else 0
+
+    month_views = db.session.query(func.max(ViewEvent.view_count)) \
+        .filter(ViewEvent.timestamp >= month_ago) \
+        .group_by(ViewEvent.paste_id).all()
+    month_views = sum(v[0] for v in month_views) if month_views else 0
+
+    # Top 5 pastes by latest view count
+    subquery = db.session.query(
+        ViewEvent.paste_id,
+        ViewEvent.short_url,
+        func.max(ViewEvent.view_count).label('max_views')
+    ).group_by(ViewEvent.paste_id, ViewEvent.short_url).subquery()
+
+    top_pastes_query = db.session.query(
+        ViewEvent.paste_id,
+        ViewEvent.short_url,
+        func.max(ViewEvent.view_count).label('view_count')
+    ).group_by(ViewEvent.paste_id, ViewEvent.short_url) \
+    .order_by(func.max(ViewEvent.view_count).desc()) \
+    .limit(5)
+
+    top_pastes = [{
+        'paste_id': row.paste_id,
+        'short_url': row.short_url,
+        'view_count': row.view_count or 0
+    } for row in top_pastes_query.all()]
+
+    # System metrics dummy values for now
+    ingestion_rate = 0
+    error_rate = 0
+    avg_latency = 0
+    backfill_count = 0
+
+    return render_template('index.html',
+                           today_views=today_views,
+                           week_views=week_views,
+                           month_views=month_views,
+                           top_pastes=top_pastes,
+                           top_users=[],  # Optional: similar query can be done per user_id
+                           ingestion_rate=ingestion_rate,
+                           error_rate=error_rate,
+                           avg_latency=avg_latency,
+                           backfill_count=backfill_count)
+
+@app.route('/dashboard')
+def dashboard():
     """
-    Dashboard homepage
+    Enhanced analytics dashboard with real data from the database
     """
-    return render_template('index.html', 
-                          today_views=0, 
-                          week_views=0, 
-                          month_views=0,
-                          top_pastes=[],
-                          top_users=[],
-                          ingestion_rate=0,
-                          error_rate=0,
-                          avg_latency=0,
-                          backfill_count=0)
+    # Calculate date ranges
+    today = datetime.utcnow().date()
+    start_of_day = datetime.combine(today, datetime.min.time())
+    start_of_week = start_of_day - timedelta(days=today.weekday())
+    start_of_month = datetime(today.year, today.month, 1)
+
+    # Get view statistics
+    today_views = ViewEvent.query.filter(ViewEvent.timestamp >= start_of_day).count()
+    week_views = ViewEvent.query.filter(ViewEvent.timestamp >= start_of_week).count()
+    month_views = ViewEvent.query.filter(ViewEvent.timestamp >= start_of_month).count()
+
+    # Get top pastes
+    top_pastes = db.session.query(
+        ViewEvent.paste_id,
+        ViewEvent.short_url,
+        func.count(ViewEvent.id).label('view_count')
+    ).group_by(
+        ViewEvent.paste_id, 
+        ViewEvent.short_url
+    ).order_by(
+        desc('view_count')
+    ).limit(5).all()
+    
+    top_pastes_formatted = [
+        {
+            'paste_id': paste.paste_id,
+            'short_url': paste.short_url,
+            'view_count': paste.view_count
+        }
+        for paste in top_pastes
+    ]
+
+    # Get unique viewers by IP
+    unique_viewers = db.session.query(
+        ViewEvent.ip_address
+    ).distinct().count()
+
+    return render_template(
+        'index.html',
+        today_views=today_views,
+        week_views=week_views,
+        month_views=month_views,
+        top_pastes=top_pastes_formatted,
+        top_users=[],  # We could add this if we had user tracking
+        unique_viewers=unique_viewers,
+        ingestion_rate=0,  # These could be calculated with timestamps
+        error_rate=0,
+        avg_latency=0,
+        backfill_count=0
+    )
+
+@app.route('/system')
+def system_metrics():
+    """
+    Display system-level analytics and performance metrics.
+    """
+    # Provide dummy data for the template
+    dummy_hourly_data = [{'hour': f'{h:02d}:00', 'count': 0, 'avg_time': 0.0} for h in range(24)]
+    dummy_error_details = {'ExampleError': 0, 'AnotherError': 0}
+
+    return render_template(
+        'system_analytics.html',
+        current_ingestion_rate=0,
+        current_error_rate=0,
+        current_avg_latency=0,
+        backfill_count=0,
+        hourly_events=dummy_hourly_data,
+        hourly_errors=dummy_hourly_data,
+        hourly_latency=dummy_hourly_data,
+        error_details=dummy_error_details
+    )
+
+@app.route('/paste/<int:paste_id>')
+def paste_analytics(paste_id):
+    """
+    Show detailed analytics for a specific paste
+    """
+    # Get paste information
+    paste_views = ViewEvent.query.filter_by(paste_id=paste_id).count()
+    
+    if paste_views == 0:
+        return render_template('error.html', message=f"No analytics data found for paste ID {paste_id}"), 404
+    
+    # Get the short URL from the first event (all events for this paste should have the same short_url)
+    first_event = ViewEvent.query.filter_by(paste_id=paste_id).first()
+    short_url = first_event.short_url
+    
+    # Calculate unique viewers
+    unique_viewers = db.session.query(ViewEvent.ip_address).filter_by(
+        paste_id=paste_id
+    ).distinct().count()
+    
+    # Calculate average views per session (if session tracking is implemented)
+    if unique_viewers > 0:
+        avg_views_per_session = paste_views / unique_viewers
+    else:
+        avg_views_per_session = 0
+    
+    # Get daily view data for the past week
+    seven_days_ago = datetime.utcnow() - timedelta(days=7)
+    daily_views = []
+    
+    for i in range(7):
+        day = seven_days_ago + timedelta(days=i)
+        next_day = day + timedelta(days=1)
+        
+        count = ViewEvent.query.filter(
+            ViewEvent.paste_id == paste_id,
+            ViewEvent.timestamp >= day,
+            ViewEvent.timestamp < next_day
+        ).count()
+        
+        daily_views.append({
+            'date': day.strftime('%Y-%m-%d'),
+            'count': count
+        })
+    
+    paste_data = {
+        'paste_id': paste_id,
+        'short_url': short_url
+    }
+    
+    return render_template(
+        'paste_analytics.html',
+        paste=paste_data,
+        total_views=paste_views,
+        unique_viewers=unique_viewers,
+        avg_views_per_session=round(avg_views_per_session, 2),
+        daily_views=daily_views
+    )
 
 @app.route('/api/track-view', methods=['POST'])
 def track_view():
@@ -98,14 +279,21 @@ def track_view():
     """
     try:
         data = request.json
+        print("✅ Received data from View service:", data)
+        print("=== TRACK VIEW API CALLED ===")
+        print(f"Remote address: {request.remote_addr}")
+        print(f"Headers: {request.headers}")
         
         if not data or not all(k in data for k in ['paste_id', 'short_url', 'view_count']):
+            print("Error: Missing required fields in request")
             return jsonify({"error": "Missing required fields"}), 400
         
         # Extract required fields
         paste_id = data['paste_id']
         short_url = data['short_url']
         view_count = data['view_count']
+        
+        print(f"Processing view for paste_id={paste_id}, short_url={short_url}, view_count={view_count}")
         
         # Extract optional fields
         ip_address = request.remote_addr
@@ -125,11 +313,14 @@ def track_view():
             db.session.commit()
         except Exception as e:
             db.session.rollback()
+            print(f"Database error: {str(e)}")
             return jsonify({"error": f"Database error: {str(e)}"}), 500
         
+        print("View tracked successfully")
         return jsonify({"success": True, "message": "View tracked successfully"}), 200
         
     except Exception as e:
+        print(f"Server error: {str(e)}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 # Create database tables
@@ -141,6 +332,132 @@ with app.app_context():
     except Exception as e:
         print(f"Error during database initialization: {str(e)}")
         print("Will try again on next restart...")
+
+# API endpoints for retrieving analytics data
+@app.route('/api/stats/summary', methods=['GET'])
+def api_stats_summary():
+    """
+    API: Return summary statistics of paste views
+    """
+    today = datetime.utcnow().date()
+    start_of_day = datetime.combine(today, datetime.min.time())
+    start_of_week = start_of_day - timedelta(days=today.weekday())
+    start_of_month = datetime(today.year, today.month, 1)
+    
+    today_views = ViewEvent.query.filter(ViewEvent.timestamp >= start_of_day).count()
+    week_views = ViewEvent.query.filter(ViewEvent.timestamp >= start_of_week).count()
+    month_views = ViewEvent.query.filter(ViewEvent.timestamp >= start_of_month).count()
+    total_views = ViewEvent.query.count()
+    
+    unique_viewers = db.session.query(ViewEvent.ip_address).distinct().count()
+    
+    return jsonify({
+        "status": "success",
+        "data": {
+            "views": {
+                "today": today_views,
+                "week": week_views,
+                "month": month_views,
+                "total": total_views
+            },
+            "unique_viewers": unique_viewers,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    })
+
+@app.route('/api/stats/top_pastes', methods=['GET'])
+def api_stats_top_pastes():
+    """
+    API: Return top viewed pastes
+    """
+    limit = request.args.get('limit', 10, type=int)
+    
+    top_pastes = db.session.query(
+        ViewEvent.paste_id,
+        ViewEvent.short_url,
+        func.count(ViewEvent.id).label('view_count')
+    ).group_by(
+        ViewEvent.paste_id, 
+        ViewEvent.short_url
+    ).order_by(
+        desc('view_count')
+    ).limit(limit).all()
+    
+    result = [
+        {
+            'paste_id': paste.paste_id,
+            'short_url': paste.short_url,
+            'view_count': paste.view_count
+        }
+        for paste in top_pastes
+    ]
+    
+    return jsonify({
+        "status": "success",
+        "data": {
+            "top_pastes": result,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    })
+
+@app.route('/api/stats/paste/<int:paste_id>', methods=['GET'])
+def api_stats_paste(paste_id):
+    """
+    API: Return detailed statistics for a specific paste
+    """
+    # Check if paste exists
+    paste_count = ViewEvent.query.filter_by(paste_id=paste_id).count()
+    if paste_count == 0:
+        return jsonify({
+            "status": "error",
+            "message": f"No data found for paste ID {paste_id}"
+        }), 404
+    
+    # Get basic stats
+    first_view = ViewEvent.query.filter_by(paste_id=paste_id).order_by(ViewEvent.timestamp).first()
+    last_view = ViewEvent.query.filter_by(paste_id=paste_id).order_by(ViewEvent.timestamp.desc()).first()
+    
+    # Get unique viewers
+    unique_viewers = db.session.query(ViewEvent.ip_address).filter_by(
+        paste_id=paste_id
+    ).distinct().count()
+    
+    # Views per day over time
+    min_date = first_view.timestamp.date()
+    max_date = last_view.timestamp.date()
+    current_date = min_date
+    daily_views = []
+    
+    while current_date <= max_date:
+        start_date = datetime.combine(current_date, datetime.min.time())
+        end_date = datetime.combine(current_date + timedelta(days=1), datetime.min.time())
+        
+        day_count = ViewEvent.query.filter(
+            ViewEvent.paste_id == paste_id,
+            ViewEvent.timestamp >= start_date,
+            ViewEvent.timestamp < end_date
+        ).count()
+        
+        daily_views.append({
+            "date": current_date.isoformat(),
+            "count": day_count
+        })
+        
+        current_date += timedelta(days=1)
+    
+    return jsonify({
+        "status": "success",
+        "data": {
+            "paste_id": paste_id,
+            "short_url": first_view.short_url,
+            "total_views": paste_count,
+            "unique_viewers": unique_viewers,
+            "first_view": first_view.timestamp.isoformat(),
+            "last_view": last_view.timestamp.isoformat(),
+            "daily_views": daily_views,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    })
 
 if __name__ == '__main__':
     print("Starting Analytics Service on port 5003...")

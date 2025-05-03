@@ -17,8 +17,8 @@ services:
       resources:
         limits:
           cpus: '2.0'
-          memory: '2048M'
-    command: ["redis-server", "--maxmemory", "2048mb", "--maxmemory-policy", "allkeys-lru", "--maxclients", "20000"]
+          memory: '4096M'
+    command: ["redis-server", "--maxmemory", "3072mb", "--maxmemory-policy", "allkeys-lru", "--maxclients", "15000"]
 
   celery:
     build:
@@ -28,8 +28,8 @@ services:
     volumes:
       - ./view-service:/app
     environment:
-      - DATABASE_URL=mysql+mysqlconnector://view_user:view_pass@view-db:3306/view_db
-      - PASTE_SERVICE_URL=http://paste-service:5000
+      - DATABASE_URL=mysql+mysqlconnector://view_user:view_pass@view-db/view_db
+      - PASTE_SERVICE_URL=http://view-haproxy:80
       - ANALYTIC_SERVICE_URL=http://analytics-service:5003
       - C_FORCE_ROOT=true
     depends_on:
@@ -49,16 +49,16 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '2.0'
-          memory: '1024M'
+          cpus: '1.0'
+          memory: '512M'
 
   view-service:
     build:
       context: ./view-service
       dockerfile: Dockerfile
     environment:
-      - DATABASE_URL=mysql+mysqlconnector://view_user:view_pass@view-db:3306/view_db
-      - PASTE_SERVICE_URL=http://paste-service:5000
+      - DATABASE_URL=mysql+mysqlconnector://view_user:view_pass@view-db/view_db
+      - PASTE_SERVICE_URL=http://view-haproxy:80
       - ANALYTIC_SERVICE_URL=http://analytics-service:5003
     depends_on:
       view-db:
@@ -115,6 +115,7 @@ services:
     volumes:
       - view-db-data:/var/lib/mysql
       - ./view-db/my.cnf:/etc/mysql/my.cnf
+      - ./view-db/init.sql:/docker-entrypoint-initdb.d/init.sql
     ports:
       - "3307:3306"
     networks:
@@ -124,11 +125,6 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
-    deploy:
-      resources:
-        limits:
-          cpus: '2.0'
-          memory: '2048M'
 
   analytics-service:
     build:
@@ -140,10 +136,10 @@ services:
     volumes:
       - ./analytics-service:/app
     environment:
-      - DATABASE_URL=mysql+mysqlconnector://analytics_user:analytics_pass@analytics-db:3306/analytics_db
+      - DATABASE_URL=mysql+mysqlconnector://analytics_user:analytics_pass@analytics-db/analytics_db
+      - VIEW_SERVICE_URL=http://view-haproxy:80
     depends_on:
-      analytics-db:
-        condition: service_healthy
+      - analytics-db
     networks:
       - paste-network
 
@@ -172,25 +168,24 @@ services:
     build:
       context: ./paste-service
       dockerfile: Dockerfile
+    container_name: paste-service 
+    ports:
+      - "5000:5000"
     volumes:
       - ./paste-service:/app
     environment:
-      DB_USER: paste_user
-      DB_PASS: paste_pass
-      DB_HOST: paste-db
-      DB_NAME: paste_db
-      VIEW_SERVICE_URL: http://view-haproxy:80
+      - DATABASE_URL=mysql+mysqlconnector://paste_user:paste_pass@paste-db/paste_db
+      - VIEW_SERVICE_URL=http://view-haproxy:80
     depends_on:
       paste-db:
         condition: service_healthy
-    deploy:
-      replicas: 3
-      resources:
-        limits:
-          cpus: '2.0'
-          memory: '4096M'
     networks:
       - paste-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
 
   paste-db:
     image: mysql:8.0
@@ -202,7 +197,7 @@ services:
       MYSQL_PASSWORD: paste_pass
       MYSQL_ROOT_PASSWORD: rootpass
     ports:
-      - "3309:3306"
+      - "3306:3306"
     volumes:
       - paste-db-data:/var/lib/mysql
     networks:
@@ -233,14 +228,17 @@ services:
 
   locust-master:
     build:
-      context: ./locust
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: locust/Dockerfile
     container_name: locust-master
     ports:
       - "5089:8089"
     volumes:
       - ./locust:/app
-    command: ["locust", "-f", "locustfile.py", "--master", "--host=http://localhost:5002"]
+    environment:
+      - LOCUST_MODE=master
+      - LOCUST_LOGLEVEL=INFO
+    command: ["locust", "-f", "locustfile.py", "--master", "--host=http://view-haproxy:80", "--web-host=0.0.0.0", "--web-port=8089"]
     networks:
       - paste-network
     depends_on:
@@ -255,17 +253,20 @@ services:
 
   locust-worker:
     build:
-      context: ./locust
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: locust/Dockerfile
     volumes:
       - ./locust:/app
+    environment:
+      - LOCUST_MODE=worker
+      - LOCUST_LOGLEVEL=INFO
     command: ["locust", "-f", "locustfile.py", "--worker", "--master-host=locust-master"]
     networks:
       - paste-network
     depends_on:
       - locust-master
     deploy:
-      replicas: 6
+      replicas: 12
       resources:
         limits:
           cpus: '1.0'
