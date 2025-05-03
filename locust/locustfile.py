@@ -25,11 +25,12 @@ class PasteServiceUser(HttpUser):
                 json=payload,
                 headers={"Content-Type": "application/json"},
                 name="Create Paste",
+                catch_response=True
             ) as response:
                 if response.status_code == 201:
                     data = response.json()
                     if "url" in data:
-                        short_url = data["url"].split("/")[-1]  # Extract the short_url (e.g., abc123)
+                        short_url = data["url"]
                         print(f"Created paste with short_url: {short_url}")
                         self.created_pastes.append(short_url)
                         response.success()
@@ -55,6 +56,7 @@ class PasteServiceUser(HttpUser):
                 f"/paste/{short_url}",
                 headers={"Connection": "keep-alive"},
                 name="View Paste",
+                catch_response=True
             ) as response:
                 if response.status_code == 200:
                     response.success()
@@ -72,7 +74,7 @@ class PasteServiceUser(HttpUser):
             )
 
     def on_start(self):
-        self.paste_service_url = "http://paste-service:5000"
+        self.paste_service_url = "http://paste-haproxy:80"
         self.view_service_url = "http://view-haproxy:80"
         self.client.base_url = self.paste_service_url
         self.view_client = HttpSession(

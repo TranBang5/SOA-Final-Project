@@ -1,3 +1,4 @@
+import uuid
 from flask import Flask, request, jsonify, render_template
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime, timedelta
@@ -14,6 +15,12 @@ app = Flask(__name__)
 # DB config
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'mysql+pymysql://paste_user:paste_pass@paste-db/paste_db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+    'pool_size': 100,
+    'max_overflow': 50,
+    'pool_timeout': 30,
+    'pool_recycle': 1800,
+}
 
 db = SQLAlchemy(app)
 
@@ -23,7 +30,7 @@ VIEW_SERVICE_URL = os.getenv("VIEW_SERVICE_URL", "http://view-service:5002")
 # Models
 class Paste(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    url = db.Column(db.String(255), unique=True, nullable=False)
+    url = db.Column(db.String(255), unique=True, nullable=False, index=True)
     content = db.Column(db.Text, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     expires_at = db.Column(db.DateTime, nullable=True)
@@ -33,8 +40,8 @@ with app.app_context():
     db.create_all()
 
 # Utilities
-def generate_url(length=10):
-    return secrets.token_urlsafe(length)
+def generate_url():
+    return str(uuid.uuid4())[:12]
 
 def map_expiration(minutes):
     return datetime.utcnow() + timedelta(minutes=minutes) if minutes else None

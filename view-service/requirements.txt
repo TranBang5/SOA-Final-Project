@@ -10,4 +10,4 @@ redis==4.0.2
 celery
 flask>=2.0.0
 gevent>=21.12.0
-pymysql>=1.0.0
+faker==20.1.0

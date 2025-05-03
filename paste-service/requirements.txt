@@ -4,5 +4,5 @@ python-dotenv==1.0.1
 mysql-connector-python==8.2.0
 gunicorn==22.0.0
 requests==2.31.0
-celery
-redis==4.0.2
+celery==5.3.6
+redis==5.0.8
