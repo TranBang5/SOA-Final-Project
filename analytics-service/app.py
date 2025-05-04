@@ -1104,6 +1104,54 @@ def api_stats_user_agents():
         }
     })
 
+@app.route("/api/pastes/expired", methods=["GET"])
+def get_expired_pastes():
+    try:
+        # Lấy paste_id từ ViewEvent, kiểm tra expires_at trong metadata_json nếu có
+        expired_pastes = []
+        paste_ids = db.session.query(ViewEvent.paste_id, ViewEvent.short_url, ViewEvent.metadata_json).distinct().all()
+        
+        for paste_id, short_url, metadata_json in paste_ids:
+            try:
+                metadata = json.loads(metadata_json) if metadata_json else {}
+                expires_at = metadata.get('expires_at')
+                if expires_at:
+                    expires_at_dt = datetime.fromisoformat(expires_at.replace('Z', '+00:00'))
+                    if expires_at_dt <= datetime.utcnow():
+                        expired_pastes.append({
+                            "paste_id": paste_id,
+                            "short_url": short_url,
+                            "expires_at": expires_at_dt.isoformat()
+                        })
+            except (ValueError, json.JSONDecodeError):
+                continue
+        
+        app.logger.info(f"Retrieved {len(expired_pastes)} expired pastes from Analytic Service")
+        return jsonify({"status": "success", "data": expired_pastes}), 200
+    except Exception as e:
+        app.logger.error(f"Failed to retrieve expired pastes: {str(e)}")
+        return jsonify({"error": f"Internal server error: {str(e)}"}), 500
+
+@app.route("/api/paste/<int:paste_id>", methods=["DELETE"])
+def delete_paste(paste_id):
+    try:
+        # Kiểm tra xem có bản ghi nào liên quan đến paste_id không
+        paste_count = ViewEvent.query.filter_by(paste_id=paste_id).count()
+        if paste_count == 0:
+            app.logger.warning(f"Attempted to delete non-existent paste {paste_id}")
+            return jsonify({"error": "No data found for paste ID"}), 404
+        
+        # Xóa tất cả ViewEvent liên quan đến paste_id
+        ViewEvent.query.filter_by(paste_id=paste_id).delete()
+        db.session.commit()
+        
+        app.logger.info(f"Successfully deleted {paste_count} view events for paste {paste_id} from Analytic Service")
+        return jsonify({"message": "Paste data deleted successfully"}), 200
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"Failed to delete paste {paste_id} data: {str(e)}")
+        return jsonify({"error": f"Internal server error: {str(e)}"}), 500
+
 if __name__ == '__main__':
     print("Starting Analytics Service on port 5003...")
     app.run(host='0.0.0.0', port=5003)

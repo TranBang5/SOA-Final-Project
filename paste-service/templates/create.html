@@ -46,19 +46,24 @@ document.getElementById("pasteForm").addEventListener("submit", async function(e
     const expires_in = expirationMap[expiration];
 
     try {
-        // Use full API URL here to call the paste-service directly
         const response = await fetch("http://localhost:5000/pastes/", {
             method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            },
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ content, expires_in })
         });
 
-        if (!response.ok) throw new Error("Failed to create paste");
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || "Failed to create paste");
+        }
 
         const data = await response.json();
-        const link = `http://localhost:5002/paste/${data.url}`;
+        if (!data.data || !data.data.short_url) {
+            throw new Error("No short_url in response");
+        }
+
+        const shortUrl = data.data.short_url;
+        const link = `http://localhost:5002/paste/${shortUrl}`;
 
         const message = document.getElementById("successMessage");
         const pasteLink = document.getElementById("pasteLink");
@@ -66,7 +71,13 @@ document.getElementById("pasteForm").addEventListener("submit", async function(e
         pasteLink.href = link;
         pasteLink.textContent = link;
         message.classList.remove("d-none");
+
+        // Automatically redirect to the paste view page after a short delay
+        setTimeout(() => {
+            window.location.href = link;
+        }, 1000); // Redirect after 1 second to allow user to see success message
     } catch (err) {
+        console.error("Error creating paste:", err);
         alert("Error: " + err.message);
     }
 });
