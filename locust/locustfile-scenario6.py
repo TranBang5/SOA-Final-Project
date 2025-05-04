@@ -6,12 +6,12 @@ from locust import events
 from locust.clients import HttpSession
 
 class PasteServiceUser(HttpUser):
-    wait_time = between(2, 10)
+    wait_time = between(0.1, 0.5)  # Điều chỉnh để đạt ~3K ops/min
     network_timeout = 30.0
     connection_timeout = 30.0
     created_pastes = []
 
-    @task(1)
+    @task(1)  # 1 write (POST)
     def create_paste(self):
         content = ''.join(random.choices(string.ascii_letters + string.digits, k=random.randint(10, 50)))
         expires_in = random.choice([60, 1440, None])
@@ -30,11 +30,11 @@ class PasteServiceUser(HttpUser):
                 if response.status_code == 201:
                     data = response.json()
                     if "url" in data:
-                        short_url = data["url"]
+                        short_url = data["url"].split("/")[-1]
                         print(f"Created paste with short_url: {short_url}")
                         self.created_pastes.append(short_url)
                         response.success()
-                        time.sleep(2)
+                        time.sleep(0.1)  # Thêm delay nhỏ để tránh quá tải
         except Exception as e:
             self.environment.events.request.fire(
                 request_type="POST",
@@ -46,7 +46,7 @@ class PasteServiceUser(HttpUser):
                 success=False
             )
 
-    @task(10)
+    @task(10)  # 10 reads (GET), tỷ lệ 10:1
     def view_paste(self):
         if not self.created_pastes:
             return
@@ -74,7 +74,7 @@ class PasteServiceUser(HttpUser):
             )
 
     def on_start(self):
-        self.paste_service_url = "http://paste-haproxy:80"
+        self.paste_service_url = "http://paste-service:5000"
         self.view_service_url = "http://view-haproxy:80"
         self.client.base_url = self.paste_service_url
         self.view_client = HttpSession(

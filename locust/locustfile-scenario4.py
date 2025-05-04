@@ -10,8 +10,9 @@ class PasteServiceUser(HttpUser):
     network_timeout = 30.0
     connection_timeout = 30.0
     created_pastes = []
+    hot_pastes = []  # Danh sách short_url "hot"
 
-    @task(1)
+    @task(1)  # 1 write (POST)
     def create_paste(self):
         content = ''.join(random.choices(string.ascii_letters + string.digits, k=random.randint(10, 50)))
         expires_in = random.choice([60, 1440, None])
@@ -30,9 +31,12 @@ class PasteServiceUser(HttpUser):
                 if response.status_code == 201:
                     data = response.json()
                     if "url" in data:
-                        short_url = data["url"]
+                        short_url = data["url"].split("/")[-1]
                         print(f"Created paste with short_url: {short_url}")
                         self.created_pastes.append(short_url)
+                        # Chọn 10% short_url làm "hot"
+                        if len(self.created_pastes) >= 10 and len(self.hot_pastes) < max(1, len(self.created_pastes) // 10):
+                            self.hot_pastes.append(short_url)
                         response.success()
                         time.sleep(2)
         except Exception as e:
@@ -46,11 +50,15 @@ class PasteServiceUser(HttpUser):
                 success=False
             )
 
-    @task(10)
+    @task(9)  # 9 reads (GET), tỷ lệ 9:1
     def view_paste(self):
         if not self.created_pastes:
             return
-        short_url = random.choice(self.created_pastes)
+        # 70% xác suất gọi short_url "hot", 30% gọi ngẫu nhiên
+        if self.hot_pastes and random.random() < 0.7:  # 70% gọi hot paste
+            short_url = random.choice(self.hot_pastes)
+        else:  # 30% gọi ngẫu nhiên
+            short_url = random.choice(self.created_pastes)
         try:
             with self.view_client.get(
                 f"/paste/{short_url}",
@@ -74,7 +82,7 @@ class PasteServiceUser(HttpUser):
             )
 
     def on_start(self):
-        self.paste_service_url = "http://paste-haproxy:80"
+        self.paste_service_url = "http://paste-service:5000"
         self.view_service_url = "http://view-haproxy:80"
         self.client.base_url = self.paste_service_url
         self.view_client = HttpSession(

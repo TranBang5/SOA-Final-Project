@@ -11,7 +11,7 @@ class PasteServiceUser(HttpUser):
     connection_timeout = 30.0
     created_pastes = []
 
-    @task(1)
+    @task(1)  # 1 write (POST)
     def create_paste(self):
         content = ''.join(random.choices(string.ascii_letters + string.digits, k=random.randint(10, 50)))
         expires_in = random.choice([60, 1440, None])
@@ -30,7 +30,7 @@ class PasteServiceUser(HttpUser):
                 if response.status_code == 201:
                     data = response.json()
                     if "url" in data:
-                        short_url = data["url"]
+                        short_url = data["url"].split("/")[-1]  # Extract the short_url (e.g., abc123)
                         print(f"Created paste with short_url: {short_url}")
                         self.created_pastes.append(short_url)
                         response.success()
@@ -46,7 +46,7 @@ class PasteServiceUser(HttpUser):
                 success=False
             )
 
-    @task(10)
+    @task(9)  # 9 reads (GET), điều chỉnh từ 10 thành 9 để đúng tỷ lệ 9:1
     def view_paste(self):
         if not self.created_pastes:
             return
@@ -59,6 +59,8 @@ class PasteServiceUser(HttpUser):
                 catch_response=True
             ) as response:
                 if response.status_code == 200:
+                    # Gửi analytics write sau mỗi lần đọc thành công
+                    self.send_analytics(short_url)
                     response.success()
                 else:
                     response.failure(f"Status code: {response.status_code}")
@@ -66,6 +68,31 @@ class PasteServiceUser(HttpUser):
             self.environment.events.request.fire(
                 request_type="GET",
                 name="View Paste",
+                response_time=0,
+                response_length=0,
+                response=None,
+                exception=str(e),
+                success=False
+            )
+
+    def send_analytics(self, short_url):
+        """Gửi analytics write sau mỗi lần đọc"""
+        try:
+            with self.view_client.post(
+                "/api/analytics",  # Thay bằng endpoint analytics thực tế
+                json={"paste_id": short_url, "event": "view"},
+                headers={"Content-Type": "application/json"},
+                name="Analytics Write",
+                catch_response=True
+            ) as response:
+                if response.status_code == 200 or response.status_code == 201:
+                    response.success()
+                else:
+                    response.failure(f"Status code: {response.status_code}")
+        except Exception as e:
+            self.environment.events.request.fire(
+                request_type="POST",
+                name="Analytics Write",
                 response_time=0,
                 response_length=0,
                 response=None,
@@ -96,7 +123,7 @@ def on_test_stop(environment, **kwargs):
     print(f"Total Failures: {total_failures}")
     print(f"Error Rate: {error_rate:.2f}%")
     
-    for entry_name in ["Create Paste", "View Paste"]:
+    for entry_name in ["Create Paste", "View Paste", "Analytics Write"]:
         entry = stats.get(entry_name, "GET" if "View Paste" in entry_name else "POST")
         if entry.num_requests > 0:
             print(f"\nMetrics for {entry_name}:")

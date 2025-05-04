@@ -11,7 +11,7 @@ class PasteServiceUser(HttpUser):
     connection_timeout = 30.0
     created_pastes = []
 
-    @task(1)
+    @task(9)
     def create_paste(self):
         content = ''.join(random.choices(string.ascii_letters + string.digits, k=random.randint(10, 50)))
         expires_in = random.choice([60, 1440, None])
@@ -30,7 +30,7 @@ class PasteServiceUser(HttpUser):
                 if response.status_code == 201:
                     data = response.json()
                     if "url" in data:
-                        short_url = data["url"]
+                        short_url = data["url"].split("/")[-1]
                         print(f"Created paste with short_url: {short_url}")
                         self.created_pastes.append(short_url)
                         response.success()
@@ -46,7 +46,7 @@ class PasteServiceUser(HttpUser):
                 success=False
             )
 
-    @task(10)
+    @task(91)
     def view_paste(self):
         if not self.created_pastes:
             return

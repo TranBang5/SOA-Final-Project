@@ -20,7 +20,7 @@ services:
           memory: '4096M'
     command: ["redis-server", "--maxmemory", "3072mb", "--maxmemory-policy", "allkeys-lru", "--maxclients", "15000"]
 
-  celery:
+  view-celery:
     build:
       context: ./view-service
       dockerfile: Dockerfile
@@ -28,7 +28,7 @@ services:
     volumes:
       - ./view-service:/app
     environment:
-      - DATABASE_URL=mysql+mysqlconnector://view_user:view_pass@view-db/view_db
+      - DATABASE_URL=mysql+mysqlconnector://view_user:view_pass@view-db:3306/view_db
       - PASTE_SERVICE_URL=http://view-haproxy:80
       - ANALYTIC_SERVICE_URL=http://analytics-service:5003
       - C_FORCE_ROOT=true
@@ -57,7 +57,7 @@ services:
       context: ./view-service
       dockerfile: Dockerfile
     environment:
-      - DATABASE_URL=mysql+mysqlconnector://view_user:view_pass@view-db/view_db
+      - DATABASE_URL=mysql+mysqlconnector://view_user:view_pass@view-db:3306/view_db
       - PASTE_SERVICE_URL=http://view-haproxy:80
       - ANALYTIC_SERVICE_URL=http://analytics-service:5003
     depends_on:
@@ -75,7 +75,7 @@ services:
       timeout: 5s
       retries: 3
     deploy:
-      replicas: 3
+      replicas: 4
       resources:
         limits:
           cpus: '2.0'
@@ -83,7 +83,7 @@ services:
 
   view-haproxy:
     build:
-      context: ./haproxy
+      context: ./haproxy-view
       dockerfile: Dockerfile
     container_name: view-haproxy
     ports:
@@ -168,13 +168,10 @@ services:
     build:
       context: ./paste-service
       dockerfile: Dockerfile
-    container_name: paste-service 
-    ports:
-      - "5000:5000"
     volumes:
       - ./paste-service:/app
     environment:
-      - DATABASE_URL=mysql+mysqlconnector://paste_user:paste_pass@paste-db/paste_db
+      - DATABASE_URL=mysql+mysqlconnector://paste_user:paste_pass@paste-db:3306/paste_db
       - VIEW_SERVICE_URL=http://view-haproxy:80
     depends_on:
       paste-db:
@@ -186,6 +183,36 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
+    deploy:
+      replicas: 4
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: '4096M'
+
+  paste-haproxy:
+    build:
+      context: ./haproxy_paste
+      dockerfile: Dockerfile
+    container_name: paste_haproxy
+    ports:
+      - "5000:80"
+    volumes:
+      - ./haproxy_paste/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg
+    depends_on:
+      - paste-service
+    networks:
+      - paste-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/stats"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: '1024M'
 
   paste-db:
     image: mysql:8.0
@@ -197,9 +224,10 @@ services:
       MYSQL_PASSWORD: paste_pass
       MYSQL_ROOT_PASSWORD: rootpass
     ports:
-      - "3306:3306"
+      - "3309:3306"
     volumes:
       - paste-db-data:/var/lib/mysql
+      - ./paste-db/my.cnf:/etc/mysql/my.cnf
     networks:
       - paste-network
     healthcheck:
@@ -238,7 +266,7 @@ services:
     environment:
       - LOCUST_MODE=master
       - LOCUST_LOGLEVEL=INFO
-    command: ["locust", "-f", "locustfile.py", "--master", "--host=http://view-haproxy:80", "--web-host=0.0.0.0", "--web-port=8089"]
+    command: ["locust", "-f", "locustfile-scenario2.py", "--master", "--host=http://view-haproxy:80", "--web-host=0.0.0.0", "--web-port=8089"]
     networks:
       - paste-network
     depends_on:
@@ -260,13 +288,13 @@ services:
     environment:
       - LOCUST_MODE=worker
       - LOCUST_LOGLEVEL=INFO
-    command: ["locust", "-f", "locustfile.py", "--worker", "--master-host=locust-master"]
+    command: ["locust", "-f", "locustfile-scenario2.py", "--worker", "--master-host=locust-master"]
     networks:
       - paste-network
     depends_on:
       - locust-master
     deploy:
-      replicas: 12
+      replicas: 8
       resources:
         limits:
           cpus: '1.0'

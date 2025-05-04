@@ -1,7 +1,7 @@
 import random
 import string
 import time
-from locust import HttpUser, task, between
+from locust import HttpUser, task, between, LoadTestShape
 from locust import events
 from locust.clients import HttpSession
 
@@ -35,6 +35,8 @@ class PasteServiceUser(HttpUser):
                         self.created_pastes.append(short_url)
                         response.success()
                         time.sleep(2)
+                else:
+                    response.failure(f"Status code: {response.status_code}")
         except Exception as e:
             self.environment.events.request.fire(
                 request_type="POST",
@@ -105,3 +107,29 @@ def on_test_stop(environment, **kwargs):
             print(f"  Error Rate: {(entry.num_failures / entry.num_requests * 100):.2f}%")
             print(f"  p99 Response Time: {entry.get_response_time_percentile(0.99):.2f} ms")
             print(f"  Avg Response Time: {entry.avg_response_time:.2f} ms")
+
+class BurstShape(LoadTestShape):
+    test_duration = 600
+
+    def tick(self):
+        run_time = self.get_run_time()
+
+        if run_time > self.test_duration:
+            return None
+
+        burst_intervals = [
+            (120, 180),  
+            (240, 300),  
+            (360, 420),  
+        ]
+
+        in_burst = False
+        for start, end in burst_intervals:
+            if start <= run_time < end:
+                in_burst = True
+                break
+
+        user_count = 1000 if in_burst else 333
+        spawn_rate = 100
+
+        return (user_count, spawn_rate)
