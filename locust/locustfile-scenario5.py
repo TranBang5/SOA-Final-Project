@@ -1,3 +1,4 @@
+from datetime import datetime
 import random
 import string
 import time
@@ -14,7 +15,7 @@ class PasteServiceUser(HttpUser):
     @task(1)  # 1 write (POST)
     def create_paste(self):
         content = ''.join(random.choices(string.ascii_letters + string.digits, k=random.randint(10, 50)))
-        expires_in = random.choice([60, 1440, None])
+        expires_in = random.choice([300, 1440, None])
         payload = {
             "content": content,
             "expires_in": expires_in
@@ -48,6 +49,14 @@ class PasteServiceUser(HttpUser):
 
     @task(9)  # 9 reads (GET), điều chỉnh từ 10 thành 9 để đúng tỷ lệ 9:1
     def view_paste(self):
+        valid_pastes = [
+            (short_url, expires_at)
+            for short_url, expires_at in self.created_pastes
+            if expires_at is None or expires_at > datetime.utcnow()
+        ]
+        if not valid_pastes:
+            print("No valid pastes available to view")
+            return
         if not self.created_pastes:
             return
         short_url = random.choice(self.created_pastes)
