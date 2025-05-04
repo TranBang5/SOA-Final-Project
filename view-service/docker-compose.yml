@@ -1,6 +1,108 @@
-version: '3.8'
-
 services:
+  redis:
+    image: redis:6.2
+    container_name: redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - paste-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: '2048M'
+    command: ["redis-server", "--maxmemory", "2048mb", "--maxmemory-policy", "allkeys-lru", "--maxclients", "20000"]
+
+  celery:
+    build:
+      context: ./view-service
+      dockerfile: Dockerfile
+    command: celery -A app.celery_app worker --loglevel=info --concurrency=8
+    volumes:
+      - ./view-service:/app
+    environment:
+      - DATABASE_URL=mysql+mysqlconnector://view_user:view_pass@view-db:3306/view_db
+      - PASTE_SERVICE_URL=http://paste-service:5000
+      - ANALYTIC_SERVICE_URL=http://analytics-service:5003
+      - C_FORCE_ROOT=true
+    depends_on:
+      redis:
+        condition: service_healthy
+      view-db:
+        condition: service_healthy
+      analytics-service:
+        condition: service_started
+    networks:
+      - paste-network
+    healthcheck:
+      test: ["CMD", "celery", "-A", "app.celery_app", "inspect", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: '1024M'
+
+  view-service:
+    build:
+      context: ./view-service
+      dockerfile: Dockerfile
+    environment:
+      - DATABASE_URL=mysql+mysqlconnector://view_user:view_pass@view-db:3306/view_db
+      - PASTE_SERVICE_URL=http://paste-service:5000
+      - ANALYTIC_SERVICE_URL=http://analytics-service:5003
+    depends_on:
+      view-db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      analytics-service:
+        condition: service_started
+    networks:
+      - paste-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5002/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    deploy:
+      replicas: 3
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: '4096M'
+
+  view-haproxy:
+    build:
+      context: ./haproxy
+      dockerfile: Dockerfile
+    container_name: view-haproxy
+    ports:
+      - "5002:80"
+    depends_on:
+      - view-service
+    networks:
+      - paste-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: '1024M'
+
   view-db:
     image: mysql:8.0
     container_name: view-db
@@ -12,35 +114,169 @@ services:
       MYSQL_ROOT_PASSWORD: rootpass
     volumes:
       - view-db-data:/var/lib/mysql
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./view-db/my.cnf:/etc/mysql/my.cnf
     ports:
       - "3307:3306"
+    networks:
+      - paste-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "view_user", "-pview_pass"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: '2048M'
 
-  view-service:
+  analytics-service:
     build:
-      context: .
+      context: ./analytics-service
       dockerfile: Dockerfile
-    container_name: view-service
+    container_name: analytics-service
+    ports:
+      - "5003:5003"
+    volumes:
+      - ./analytics-service:/app
+    environment:
+      - DATABASE_URL=mysql+mysqlconnector://analytics_user:analytics_pass@analytics-db:3306/analytics_db
+    depends_on:
+      analytics-db:
+        condition: service_healthy
+    networks:
+      - paste-network
+
+  analytics-db:
+    image: mysql:8.0
+    container_name: analytics-db
     restart: always
     environment:
-      DATABASE_URL: mysql+mysqlconnector://view_user:view_pass@view-db/view_db
-      PASTE_SERVICE_URL: http://paste-service:5001
-      ANALYTIC_SERVICE_URL: http://analytics-service:5003  # Add URL for analytics service
-    depends_on:
-      - view-db
-    ports:
-      - "5002:5002"
+      MYSQL_DATABASE: analytics_db
+      MYSQL_USER: analytics_user
+      MYSQL_PASSWORD: analytics_pass
+      MYSQL_ROOT_PASSWORD: rootpass
     volumes:
-      - .:/app  # Mount current directory for live reloading/templates
+      - analytics-db-data:/var/lib/mysql
+    ports:
+      - "3308:3306"
     networks:
-      - analytics-network
-      - default
+      - paste-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "analytics_user", "-panalytics_pass"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
 
+  paste-service:
+    build:
+      context: ./paste-service
+      dockerfile: Dockerfile
+    volumes:
+      - ./paste-service:/app
+    environment:
+      DB_USER: paste_user
+      DB_PASS: paste_pass
+      DB_HOST: paste-db
+      DB_NAME: paste_db
+      VIEW_SERVICE_URL: http://view-haproxy:80
+    depends_on:
+      paste-db:
+        condition: service_healthy
+    deploy:
+      replicas: 3
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: '4096M'
+    networks:
+      - paste-network
+
+  paste-db:
+    image: mysql:8.0
+    container_name: paste-db
+    restart: always
+    environment:
+      MYSQL_DATABASE: paste_db
+      MYSQL_USER: paste_user
+      MYSQL_PASSWORD: paste_pass
+      MYSQL_ROOT_PASSWORD: rootpass
+    ports:
+      - "3309:3306"
+    volumes:
+      - paste-db-data:/var/lib/mysql
+    networks:
+      - paste-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "paste_user", "-ppaste_pass"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  cleanup-service:
+    build:
+      context: ./cleanup-service
+      dockerfile: Dockerfile
+    container_name: cleanup-service
+    volumes:
+      - ./cleanup-service:/app
+    environment:
+      VIEW_SERVICE_URL: http://view-haproxy:80
+      ANALYTIC_SERVICE_URL: http://analytics-service:5003
+      REQUEST_TIMEOUT: 5
+      CLEANUP_INTERVAL: 3600
+    depends_on:
+      - view-haproxy
+      - analytics-service
+    networks:
+      - paste-network
+
+  locust-master:
+    build:
+      context: ./locust
+      dockerfile: Dockerfile
+    container_name: locust-master
+    ports:
+      - "5089:8089"
+    volumes:
+      - ./locust:/app
+    command: ["locust", "-f", "locustfile.py", "--master", "--host=http://localhost:5002"]
+    networks:
+      - paste-network
+    depends_on:
+      - paste-service
+      - view-haproxy
+      - analytics-service
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: '1024M'
+
+  locust-worker:
+    build:
+      context: ./locust
+      dockerfile: Dockerfile
+    volumes:
+      - ./locust:/app
+    command: ["locust", "-f", "locustfile.py", "--worker", "--master-host=locust-master"]
+    networks:
+      - paste-network
+    depends_on:
+      - locust-master
+    deploy:
+      replicas: 6
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: '1024M'
 
 volumes:
   view-db-data:
+  analytics-db-data:
+  paste-db-data:
+  redis-data:
 
 networks:
-  analytics-network:
-    external: true
-    name: analytics-network
+  paste-network:
+    driver: bridge

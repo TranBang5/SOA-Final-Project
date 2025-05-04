@@ -1,0 +1,131 @@
+version: "3.8"
+services:
+  paste_mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: your_password
+      MYSQL_DATABASE: pastebin
+    volumes:
+      - paste_mysql_data:/var/lib/mysql
+    networks:
+      - pastebin_network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  view_mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: your_password
+      MYSQL_DATABASE: viewdb
+    volumes:
+      - view_mysql_data:/var/lib/mysql
+    networks:
+      - pastebin_network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    networks:
+      - pastebin_network
+    healthcheck:
+      test: ["CMD", "rabbitmqctl", "status"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  paste_service:
+    build:
+      context: ./paste_service
+      dockerfile: Dockerfile
+    environment:
+      DB_USER: root
+      DB_PASS: your_password
+      DB_HOST: paste_mysql
+      DB_NAME: pastebin
+    depends_on:
+      paste_mysql:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - pastebin_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    deploy:
+      replicas: 3
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: '4096M'
+
+  paste_haproxy:
+    build:
+      context: ./haproxy_paste
+      dockerfile: Dockerfile
+    container_name: paste_haproxy
+    ports:
+      - "8000:80"
+    volumes:
+      - ./haproxy_paste/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg
+    depends_on:
+      - paste_service
+    networks:
+      - pastebin_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/stats"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: '1024M'
+
+  view_service:
+    build: ./view_service
+    ports:
+      - "8002:8000"
+    environment:
+      DB_USER: root
+      DB_PASS: your_password
+      DB_HOST: view_mysql
+      DB_NAME: viewdb
+    depends_on:
+      view_mysql:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - pastebin_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: '4096M'
+
+volumes:
+  paste_mysql_data:
+  view_mysql_data:
+
+networks:
+  pastebin_network:
+    driver: bridge

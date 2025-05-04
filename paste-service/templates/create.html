@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+
+{% block title %}Create New Paste{% endblock %}
+
+{% block content %}
+<div class="metric-card">
+    <h2 class="mb-4">Create a New Paste</h2>
+    <form id="pasteForm">
+        <div class="mb-3">
+            <label for="pasteContent" class="form-label">Paste Content</label>
+            <textarea class="form-control paste-textarea" id="pasteContent" name="content" placeholder="Enter your paste content here..." required></textarea>
+        </div>
+        <div class="mb-3">
+            <label for="pasteExpiration" class="form-label">Expiration</label>
+            <select class="form-select" id="pasteExpiration" name="expiration">
+                <option value="never">Never</option>
+                <option value="1h">1 Hour</option>
+                <option value="1d">1 Day</option>
+                <option value="1w">1 Week</option>
+            </select>
+        </div>
+        <button type="submit" class="btn btn-primary">Create Paste</button>
+    </form>
+</div>
+
+<div class="alert alert-success mt-3 d-none" id="successMessage">
+    Paste created! <a href="#" id="pasteLink" target="_blank">View your paste</a>.
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById("pasteForm").addEventListener("submit", async function(event) {
+    event.preventDefault();
+
+    const content = document.getElementById("pasteContent").value.trim();
+    const expiration = document.getElementById("pasteExpiration").value;
+
+    const expirationMap = {
+        "never": null,
+        "1h": 60,
+        "1d": 60 * 24,
+        "1w": 60 * 24 * 7
+    };
+
+    const expires_in = expirationMap[expiration];
+
+    try {
+        // Use full API URL here to call the paste-service directly
+        const response = await fetch("http://localhost:5000/pastes/", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({ content, expires_in })
+        });
+
+        if (!response.ok) throw new Error("Failed to create paste");
+
+        const data = await response.json();
+        const link = `http://localhost:5002/paste/${data.url}`;
+
+        const message = document.getElementById("successMessage");
+        const pasteLink = document.getElementById("pasteLink");
+
+        pasteLink.href = link;
+        pasteLink.textContent = link;
+        message.classList.remove("d-none");
+    } catch (err) {
+        alert("Error: " + err.message);
+    }
+});
+</script>
+{% endblock %}
