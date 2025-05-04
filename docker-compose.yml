@@ -266,7 +266,7 @@ services:
     environment:
       - LOCUST_MODE=master
       - LOCUST_LOGLEVEL=INFO
-    command: ["locust", "-f", "locustfile.py", "--master", "--host=http://view-haproxy:80", "--web-host=0.0.0.0", "--web-port=8089"]
+    command: ["locust", "-f", "locustfile-scenario2.py", "--master", "--host=http://view-haproxy:80", "--web-host=0.0.0.0", "--web-port=8089"]
     networks:
       - paste-network
     depends_on:
@@ -288,7 +288,7 @@ services:
     environment:
       - LOCUST_MODE=worker
       - LOCUST_LOGLEVEL=INFO
-    command: ["locust", "-f", "locustfile.py", "--worker", "--master-host=locust-master"]
+    command: ["locust", "-f", "locustfile-scenario2.py", "--worker", "--master-host=locust-master"]
     networks:
       - paste-network
     depends_on:

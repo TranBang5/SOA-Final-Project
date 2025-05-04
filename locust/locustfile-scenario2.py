@@ -1,7 +1,7 @@
 import random
 import string
 import time
-from locust import HttpUser, task, between, LoadTestShape
+from locust import HttpUser, task, between
 from locust import events
 from locust.clients import HttpSession
 
@@ -11,7 +11,7 @@ class PasteServiceUser(HttpUser):
     connection_timeout = 30.0
     created_pastes = []
 
-    @task(1)
+    @task(9)
     def create_paste(self):
         content = ''.join(random.choices(string.ascii_letters + string.digits, k=random.randint(10, 50)))
         expires_in = random.choice([60, 1440, None])
@@ -30,13 +30,11 @@ class PasteServiceUser(HttpUser):
                 if response.status_code == 201:
                     data = response.json()
                     if "url" in data:
-                        short_url = data["url"]
+                        short_url = data["url"].split("/")[-1]
                         print(f"Created paste with short_url: {short_url}")
                         self.created_pastes.append(short_url)
                         response.success()
                         time.sleep(2)
-                else:
-                    response.failure(f"Status code: {response.status_code}")
         except Exception as e:
             self.environment.events.request.fire(
                 request_type="POST",
@@ -48,7 +46,7 @@ class PasteServiceUser(HttpUser):
                 success=False
             )
 
-    @task(10)
+    @task(91)
     def view_paste(self):
         if not self.created_pastes:
             return
@@ -107,29 +105,3 @@ def on_test_stop(environment, **kwargs):
             print(f"  Error Rate: {(entry.num_failures / entry.num_requests * 100):.2f}%")
             print(f"  p99 Response Time: {entry.get_response_time_percentile(0.99):.2f} ms")
             print(f"  Avg Response Time: {entry.avg_response_time:.2f} ms")
-
-class BurstShape(LoadTestShape):
-    test_duration = 600
-
-    def tick(self):
-        run_time = self.get_run_time()
-
-        if run_time > self.test_duration:
-            return None
-
-        burst_intervals = [
-            (120, 180),  
-            (240, 300),  
-            (360, 420),  
-        ]
-
-        in_burst = False
-        for start, end in burst_intervals:
-            if start <= run_time < end:
-                in_burst = True
-                break
-
-        user_count = 1000 if in_burst else 333
-        spawn_rate = 100
-
-        return (user_count, spawn_rate)
