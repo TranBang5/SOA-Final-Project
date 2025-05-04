@@ -244,10 +244,13 @@ services:
     volumes:
       - ./cleanup-service:/app
     environment:
-      VIEW_SERVICE_URL: http://view-haproxy:80
-      ANALYTIC_SERVICE_URL: http://analytics-service:5003
-      REQUEST_TIMEOUT: 5
-      CLEANUP_INTERVAL: 3600
+      - VIEW_SERVICE_URL=http://view-haproxy:80
+      - ANALYTIC_SERVICE_URL=http://analytics-service:5003
+      - PASTE_SERVICE_URL=http://paste-haproxy:80
+      - REQUEST_TIMEOUT=5
+      - CLEANUP_INTERVAL=3600
+      - RETRY_ATTEMPTS=3
+      - RETRY_DELAY=1
     depends_on:
       - view-haproxy
       - analytics-service

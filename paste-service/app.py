@@ -127,5 +127,43 @@ def get_paste_by_url(url):
         "expires_at": paste.expires_at
     })
 
+@app.route("/api/pastes/expired", methods=["GET"])
+def get_expired_pastes():
+    try:
+        expired_pastes = Paste.query.filter(
+            Paste.expires_at <= datetime.utcnow(),
+            Paste.expires_at != None
+        ).all()
+        pastes_data = [
+            {
+                "paste_id": paste.id,
+                "short_url": paste.url,
+                "expires_at": paste.expires_at.isoformat() if paste.expires_at else None
+            }
+            for paste in expired_pastes
+        ]
+        app.logger.info(f"Retrieved {len(pastes_data)} expired pastes from Paste Service")
+        return jsonify({"status": "success", "data": pastes_data}), 200
+    except Exception as e:
+        app.logger.error(f"Failed to retrieve expired pastes: {str(e)}")
+        return jsonify({"error": f"Internal server error: {str(e)}"}), 500
+
+@app.route("/api/paste/<int:paste_id>", methods=["DELETE"])
+def delete_paste(paste_id):
+    try:
+        paste = Paste.query.get(paste_id)
+        if not paste:
+            app.logger.warning(f"Attempted to delete non-existent paste {paste_id}")
+            return jsonify({"error": "Paste not found"}), 404
+        
+        db.session.delete(paste)
+        db.session.commit()
+        app.logger.info(f"Successfully deleted paste {paste_id} from Paste Service")
+        return jsonify({"message": "Paste deleted successfully"}), 200
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"Failed to delete paste {paste_id}: {str(e)}")
+        return jsonify({"error": f"Internal server error: {str(e)}"}), 500
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)

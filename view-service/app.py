@@ -308,5 +308,59 @@ def receive_paste():
         app.logger.error(f"View Service Error: {str(e)}", exc_info=True)
         return jsonify({"error": str(e)}), 400
 
+@app.route("/api/pastes/expired", methods=["GET"])
+@retry_on_deadlock(max_retries=3, delay=0.1)
+def get_expired_pastes():
+    try:
+        expired_pastes = Paste.query.filter(
+            Paste.expires_at <= datetime.utcnow(),
+            Paste.expires_at != None
+        ).all()
+        pastes_data = [
+            {
+                "paste_id": paste.paste_id,
+                "short_url": paste.short_url,
+                "expires_at": paste.expires_at.isoformat() if paste.expires_at else None
+            }
+            for paste in expired_pastes
+        ]
+        app.logger.info(f"Retrieved {len(pastes_data)} expired pastes from View Service")
+        return jsonify({"status": "success", "data": pastes_data}), 200
+    except OperationalError as e:
+        app.logger.error(f"Database error retrieving expired pastes: {str(e)}")
+        return jsonify({"error": "Database unavailable"}), 503
+    except Exception as e:
+        app.logger.error(f"Failed to retrieve expired pastes: {str(e)}")
+        return jsonify({"error": f"Internal server error: {str(e)}"}), 500
+    
+@app.route("/api/paste/<int:paste_id>", methods=["DELETE"])
+@retry_on_deadlock(max_retries=3, delay=0.1)
+def delete_paste(paste_id):
+    try:
+        paste = Paste.query.filter_by(paste_id=paste_id).first()
+        if not paste:
+            app.logger.warning(f"Attempted to delete non-existent paste {paste_id}")
+            return jsonify({"error": "Paste not found"}), 404
+        
+        # Xóa paste khỏi database
+        db.session.delete(paste)
+        db.session.commit()
+        
+        # Xóa cache liên quan trong Redis
+        cache_key = f"paste:{paste.short_url}"
+        count_key = f"view_count:{paste.short_url}"
+        redis_client.delete(cache_key, count_key)
+        
+        app.logger.info(f"Successfully deleted paste {paste_id} and related cache from View Service")
+        return jsonify({"message": "Paste deleted successfully"}), 200
+    except OperationalError as e:
+        db.session.rollback()
+        app.logger.error(f"Database error deleting paste {paste_id}: {str(e)}")
+        return jsonify({"error": "Database unavailable"}), 503
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"Failed to delete paste {paste_id}: {str(e)}")
+        return jsonify({"error": f"Internal server error: {str(e)}"}), 500
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5002, debug=False)
