@@ -4,17 +4,18 @@ import time
 from locust import HttpUser, task, between
 from locust import events
 from locust.clients import HttpSession
+from datetime import datetime, timedelta
 
 class PasteServiceUser(HttpUser):
     wait_time = between(2, 10)
     network_timeout = 30.0
     connection_timeout = 30.0
-    created_pastes = []
+    created_pastes = []  # Store tuples of (short_url, expires_at)
 
     @task(1)
     def create_paste(self):
         content = ''.join(random.choices(string.ascii_letters + string.digits, k=random.randint(10, 50)))
-        expires_in = random.choice([60, 1440, None])
+        expires_in = random.choice([300, 1440, None])
         payload = {
             "content": content,
             "expires_in": expires_in
@@ -31,10 +32,14 @@ class PasteServiceUser(HttpUser):
                     data = response.json()
                     if "data" in data and "short_url" in data["data"]:
                         short_url = data["data"]["short_url"]
-                        print(f"Created paste with short_url: {short_url}")
-                        self.created_pastes.append(short_url)
+                        # Calculate expiration time
+                        expires_at = None
+                        if expires_in:
+                            expires_at = datetime.utcnow() + timedelta(seconds=expires_in)
+                        print(f"Created paste with short_url: {short_url}, expires_at: {expires_at}")
+                        self.created_pastes.append((short_url, expires_at))
                         response.success()
-                        time.sleep(5)
+                        time.sleep(2)
                     else:
                         response.failure("Missing data.short_url in response")
                         print(f"Invalid response JSON: {data}")
@@ -54,9 +59,16 @@ class PasteServiceUser(HttpUser):
 
     @task(10)
     def view_paste(self):
-        if not self.created_pastes:
+        # Filter out expired pastes
+        valid_pastes = [
+            (short_url, expires_at)
+            for short_url, expires_at in self.created_pastes
+            if expires_at is None or expires_at > datetime.utcnow()
+        ]
+        if not valid_pastes:
+            print("No valid pastes available to view")
             return
-        short_url = random.choice(self.created_pastes)
+        short_url, _ = random.choice(valid_pastes)
         try:
             with self.view_client.get(
                 f"/paste/{short_url}",
@@ -89,6 +101,10 @@ class PasteServiceUser(HttpUser):
             user=self
         )
         self.create_paste()
+
+    def on_stop(self):
+        # Clean up created_pastes to free memory
+        self.created_pastes.clear()
 
 @events.test_stop.add_listener
 def on_test_stop(environment, **kwargs):
