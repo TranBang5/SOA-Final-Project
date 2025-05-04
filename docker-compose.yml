@@ -18,7 +18,7 @@ services:
         limits:
           cpus: '2.0'
           memory: '4096M'
-    command: ["redis-server", "--maxmemory", "3072mb", "--maxmemory-policy", "allkeys-lru", "--maxclients", "15000"]
+    command: ["redis-server", "--maxmemory", "3072mb", "--maxmemory-policy", "volatile-ttl", "--maxclients", "15000"]
 
   view-celery:
     build:
@@ -75,7 +75,7 @@ services:
       timeout: 5s
       retries: 3
     deploy:
-      replicas: 3
+      replicas: 4
       resources:
         limits:
           cpus: '2.0'
@@ -210,6 +210,37 @@ services:
           cpus: '2.0'
           memory: '1024M'
 
+  paste-celery:
+    build:
+      context: ./paste-service
+      dockerfile: Dockerfile
+    command: celery -A app.celery_app worker --loglevel=info --concurrency=8 --queues view_service
+    volumes:
+      - ./paste-service:/app
+    environment:
+      - VIEW_SERVICE_URL=http://view-haproxy:80
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REQUEST_TIMEOUT=2
+      - RETRY_ATTEMPTS=3
+      - RETRY_DELAY=1
+      - C_FORCE_ROOT=true
+    depends_on:
+      - redis
+      - view-haproxy
+    networks:
+      - paste-network
+    healthcheck:
+      test: ["CMD", "celery", "-A", "app.celery_app", "inspect", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: '512M'
+
   cleanup-service:
     build:
       context: ./cleanup-service
@@ -274,8 +305,8 @@ services:
       replicas: 12
       resources:
         limits:
-          cpus: '1.0'
-          memory: '1024M'
+          cpus: '2.0'
+          memory: '4096M'
 
 volumes:
   view-db-data:
