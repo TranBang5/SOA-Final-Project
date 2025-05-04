@@ -6,3 +6,4 @@ gunicorn==22.0.0
 requests==2.31.0
 redis==5.0.8
 tenacity
+celery==5.2.7

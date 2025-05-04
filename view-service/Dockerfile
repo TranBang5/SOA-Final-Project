@@ -13,4 +13,4 @@ COPY . .
 
 RUN pip install --no-cache-dir gevent mysql-connector-python
 ENV DB_POOL_SIZE=32
-CMD ["gunicorn", "--worker-class", "gevent", "-w", "8", "--threads", "50", "--worker-tmp-dir", "/dev/shm", "--timeout", "20", "--keep-alive", "3", "--log-level", "info", "--access-logfile", "-", "--error-logfile", "-", "-b", "0.0.0.0:5002", "app:app"]
+CMD ["gunicorn", "--worker-class", "gevent", "-w", "5", "--threads", "50", "--worker-tmp-dir", "/dev/shm", "--timeout", "20", "--keep-alive", "3", "--log-level", "info", "--access-logfile", "-", "--error-logfile", "-", "-b", "0.0.0.0:5002", "app:app"]
