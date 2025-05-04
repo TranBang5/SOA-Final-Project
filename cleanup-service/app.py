@@ -52,13 +52,7 @@ def get_expired_pastes_from_service(service_url, service_name):
     retry=retry_if_exception_type((requests.RequestException, requests.HTTPError)),
     reraise=True
 )
-def delete_from_paste_service(paste_id):
-    response = requests.delete(
-        f"{PASTE_SERVICE_URL}/api/paste/{paste_id}",
-        timeout=REQUEST_TIMEOUT
-    )
-    response.raise_for_status()
-    logger.info(f"Successfully deleted paste {paste_id} from Paste Service")
+
 
 @retry(
     stop=stop_after_attempt(RETRY_ATTEMPTS),
@@ -94,14 +88,10 @@ def cleanup_expired_pastes():
         try:
             logger.info("Starting cleanup of expired pastes")
             # Lấy danh sách paste hết hạn từ các service
-            paste_service_pastes = []
+ 
             view_service_pastes = []
             analytic_service_pastes = []
 
-            try:
-                paste_service_pastes = get_expired_pastes_from_service(PASTE_SERVICE_URL, "Paste Service")
-            except Exception as e:
-                logger.warning(f"Skipping Paste Service due to error: {str(e)}")
 
             try:
                 view_service_pastes = get_expired_pastes_from_service(VIEW_SERVICE_URL, "View Service")

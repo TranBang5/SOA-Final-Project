@@ -29,12 +29,17 @@ class PasteServiceUser(HttpUser):
             ) as response:
                 if response.status_code == 201:
                     data = response.json()
-                    if "url" in data:
-                        short_url = data["url"]
+                    if "data" in data and "short_url" in data["data"]:
+                        short_url = data["data"]["short_url"]
                         print(f"Created paste with short_url: {short_url}")
                         self.created_pastes.append(short_url)
                         response.success()
-                        time.sleep(2)
+                        time.sleep(5)
+                    else:
+                        response.failure("Missing data.short_url in response")
+                        print(f"Invalid response JSON: {data}")
+                else:
+                    response.failure(f"Status code: {response.status_code}")
         except Exception as e:
             self.environment.events.request.fire(
                 request_type="POST",
@@ -45,6 +50,7 @@ class PasteServiceUser(HttpUser):
                 exception=str(e),
                 success=False
             )
+            print(f"Error creating paste: {str(e)}")
 
     @task(10)
     def view_paste(self):
