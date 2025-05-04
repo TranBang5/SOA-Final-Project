@@ -171,11 +171,7 @@ services:
     volumes:
       - ./paste-service:/app
     environment:
-      - DATABASE_URL=mysql+mysqlconnector://paste_user:paste_pass@paste-db:3306/paste_db
       - VIEW_SERVICE_URL=http://view-haproxy:80
-    depends_on:
-      paste-db:
-        condition: service_healthy
     networks:
       - paste-network
     healthcheck:
@@ -214,28 +210,6 @@ services:
           cpus: '2.0'
           memory: '1024M'
 
-  paste-db:
-    image: mysql:8.0
-    container_name: paste-db
-    restart: always
-    environment:
-      MYSQL_DATABASE: paste_db
-      MYSQL_USER: paste_user
-      MYSQL_PASSWORD: paste_pass
-      MYSQL_ROOT_PASSWORD: rootpass
-    ports:
-      - "3309:3306"
-    volumes:
-      - paste-db-data:/var/lib/mysql
-      - ./paste-db/my.cnf:/etc/mysql/my.cnf
-    networks:
-      - paste-network
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "paste_user", "-ppaste_pass"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-
   cleanup-service:
     build:
       context: ./cleanup-service
@@ -244,10 +218,13 @@ services:
     volumes:
       - ./cleanup-service:/app
     environment:
-      VIEW_SERVICE_URL: http://view-haproxy:80
-      ANALYTIC_SERVICE_URL: http://analytics-service:5003
-      REQUEST_TIMEOUT: 5
-      CLEANUP_INTERVAL: 3600
+      - VIEW_SERVICE_URL=http://view-haproxy:80
+      - ANALYTIC_SERVICE_URL=http://analytics-service:5003
+
+      - REQUEST_TIMEOUT=5
+      - CLEANUP_INTERVAL=3600
+      - RETRY_ATTEMPTS=3
+      - RETRY_DELAY=1
     depends_on:
       - view-haproxy
       - analytics-service
@@ -266,7 +243,7 @@ services:
     environment:
       - LOCUST_MODE=master
       - LOCUST_LOGLEVEL=INFO
-    command: ["locust", "-f", "locustfile-scenario2.py", "--master", "--host=http://view-haproxy:80", "--web-host=0.0.0.0", "--web-port=8089"]
+    command: ["locust", "-f", "locustfile.py", "--master", "--host=http://view-haproxy:80", "--web-host=0.0.0.0", "--web-port=8089"]
     networks:
       - paste-network
     depends_on:
@@ -288,7 +265,7 @@ services:
     environment:
       - LOCUST_MODE=worker
       - LOCUST_LOGLEVEL=INFO
-    command: ["locust", "-f", "locustfile-scenario2.py", "--worker", "--master-host=locust-master"]
+    command: ["locust", "-f", "locustfile.py", "--worker", "--master-host=locust-master"]
     networks:
       - paste-network
     depends_on:
@@ -303,7 +280,6 @@ services:
 volumes:
   view-db-data:
   analytics-db-data:
-  paste-db-data:
   redis-data:
 
 networks:

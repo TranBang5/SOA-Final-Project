@@ -29,8 +29,8 @@ class PasteServiceUser(HttpUser):
             ) as response:
                 if response.status_code == 201:
                     data = response.json()
-                    if "url" in data:
-                        short_url = data["url"].split("/")[-1]
+                    if "data" in data and "short_url" in data["data"]:
+                        short_url = data["data"]["short_url"]
                         print(f"Created paste with short_url: {short_url}")
                         self.created_pastes.append(short_url)
                         response.success()

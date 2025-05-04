@@ -30,13 +30,10 @@ class PasteServiceUser(HttpUser):
             ) as response:
                 if response.status_code == 201:
                     data = response.json()
-                    if "url" in data:
-                        short_url = data["url"].split("/")[-1]
+                    if "data" in data and "short_url" in data["data"]:
+                        short_url = data["data"]["short_url"]
                         print(f"Created paste with short_url: {short_url}")
                         self.created_pastes.append(short_url)
-                        # Chọn 10% short_url làm "hot"
-                        if len(self.created_pastes) >= 10 and len(self.hot_pastes) < max(1, len(self.created_pastes) // 10):
-                            self.hot_pastes.append(short_url)
                         response.success()
                         time.sleep(2)
         except Exception as e:
@@ -82,7 +79,7 @@ class PasteServiceUser(HttpUser):
             )
 
     def on_start(self):
-        self.paste_service_url = "http://paste-service:5000"
+        self.paste_service_url = "http://paste-haproxy:80"
         self.view_service_url = "http://view-haproxy:80"
         self.client.base_url = self.paste_service_url
         self.view_client = HttpSession(
