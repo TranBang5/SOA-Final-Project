@@ -1,5 +1,8 @@
 requests
 python-dotenv
+redis
+rq
 sqlalchemy
 mysql-connector-python
 tenacity
+
